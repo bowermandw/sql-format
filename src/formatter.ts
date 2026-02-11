@@ -291,7 +291,24 @@ class Formatter {
 
     // Column list
     const firstOnNewLine = this.config.lists.placeFirstItemOnNewLine;
-    const cols = node.columns.map(c => this.formatSelectItem(c));
+
+    // Compute alias alignment width if configured
+    let aliasAlignWidth: number | undefined;
+    if (this.config.lists.alignAliases) {
+      let maxExprWidth = 0;
+      for (const c of node.columns) {
+        const aliased = c as any;
+        if (aliased.alias) {
+          const exprStr = aliased._expression
+            ? this.formatNode(aliased._expression)
+            : aliased.parts ? aliased.parts.map((p: Token) => this.formatIdentifierPart(p)).join('.') : '';
+          if (exprStr.length > maxExprWidth) maxExprWidth = exprStr.length;
+        }
+      }
+      if (maxExprWidth > 0) aliasAlignWidth = maxExprWidth;
+    }
+
+    const cols = node.columns.map(c => this.formatSelectItem(c, aliasAlignWidth));
 
     const leadingCommas = this.config.lists.commas.placeCommasBeforeItems;
 
@@ -378,16 +395,33 @@ class Formatter {
     return s;
   }
 
-  private formatSelectItem(node: SqlNode): string {
+  private formatSelectItem(node: SqlNode, alignWidth?: number): string {
     const aliased = node as any;
     if (aliased._expression) {
       let s = this.formatNode(aliased._expression);
       if (aliased.alias) {
+        if (alignWidth !== undefined && alignWidth > s.length) {
+          s = s + ' '.repeat(alignWidth - s.length);
+        }
         if (aliased.alias.asToken) {
           s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(aliased.alias.name);
         } else {
           s += ' ' + this.formatIdentifierPart(aliased.alias.name);
         }
+      }
+      return s;
+    }
+    // IdentifierNode with alias — handle alignment
+    if (node.type === 'identifier' && (node as IdentifierNode).alias && alignWidth !== undefined) {
+      const idNode = node as IdentifierNode;
+      let s = idNode.parts.map(p => this.formatIdentifierPart(p)).join('.');
+      if (alignWidth > s.length) {
+        s = s + ' '.repeat(alignWidth - s.length);
+      }
+      if (idNode.alias!.asToken) {
+        s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(idNode.alias!.name);
+      } else {
+        s += ' ' + this.formatIdentifierPart(idNode.alias!.name);
       }
       return s;
     }
