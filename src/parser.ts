@@ -618,12 +618,12 @@ class Parser {
     if (this.isWord('AS')) {
       const asToken = this.advance();
       const aliasName = this.advance();
-      if (node.type === 'identifier') {
+      if (node.type === 'identifier' || node.type === 'parenGroup') {
         return { ...node, alias: { asToken, name: aliasName } };
       }
     } else if (this.isWord() && !this.isClauseKeyword() && !this.isJoinKeyword()) {
       const name = this.advance();
-      if (node.type === 'identifier') {
+      if (node.type === 'identifier' || node.type === 'parenGroup') {
         return { ...node, alias: { name } };
       }
     }

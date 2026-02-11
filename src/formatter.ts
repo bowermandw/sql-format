@@ -322,7 +322,12 @@ class Formatter {
     // FROM
     if (node.from) {
       lines.push(indent + this.kw('FROM'));
-      lines.push(clauseIndent + this.formatNode(node.from.source));
+      const source = node.from.source;
+      if (source.type === 'parenGroup' && source.inner.length === 1 && source.inner[0].type === 'select') {
+        lines.push(clauseIndent + this.formatParenGroup(source, baseIndent + 1));
+      } else {
+        lines.push(clauseIndent + this.formatNode(source));
+      }
       for (const join of node.from.joins) {
         lines.push(this.formatJoin(join, baseIndent));
       }
@@ -389,12 +394,24 @@ class Formatter {
 
   private formatJoin(node: JoinNode, baseIndent?: number): string {
     const bi = baseIndent ?? this.indent;
-    const indent = this.indentStr(bi);
+    const clauseIndent = this.indentStr(bi + 1);
     const joinKw = node.joinKeywords.map(t => this.kw(t.value)).join(' ');
-    const table = this.formatNode(node.table);
-    let line = indent + joinKw + ' ' + table;
+    const tableNode = node.table;
+    let line: string;
+    if (tableNode.type === 'parenGroup' && tableNode.inner.length === 1 && tableNode.inner[0].type === 'select') {
+      const formatted = this.formatParenGroup(tableNode, bi + 1);
+      if (formatted.includes('\n')) {
+        // Multi-line subquery: put on next line
+        line = clauseIndent + joinKw + '\n' + clauseIndent + formatted;
+      } else {
+        // Collapsed subquery: keep on same line
+        line = clauseIndent + joinKw + ' ' + formatted;
+      }
+    } else {
+      line = clauseIndent + joinKw + ' ' + this.formatNode(tableNode);
+    }
     if (node.on) {
-      const onIndent = this.indentStr(bi + 1);
+      const onIndent = this.indentStr(bi + 2);
       line += '\n' + onIndent + this.kw('ON') + ' ' + this.formatNode(node.on.condition);
     }
     return line;
@@ -914,9 +931,45 @@ class Formatter {
 
   // --- Paren group ---
 
-  private formatParenGroup(node: ParenGroupNode): string {
+  private formatParenGroupAlias(node: ParenGroupNode): string {
+    if (!node.alias) return '';
+    if (node.alias.asToken) {
+      return ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(node.alias.name);
+    }
+    return ' ' + this.formatIdentifierPart(node.alias.name);
+  }
+
+  private formatParenGroup(node: ParenGroupNode, baseIndent?: number): string {
+    const isSubquery = node.inner.length === 1 && node.inner[0].type === 'select';
+
+    if (isSubquery) {
+      const bi = baseIndent ?? this.indent;
+      const indent = this.indentStr(bi);
+      const dml = this.config.dml;
+      const alias = this.formatParenGroupAlias(node);
+
+      // Try collapsing the subquery if configured
+      if (dml.collapseShortSubqueries) {
+        const collapsed = this.collapseSelect(node.inner[0] as SelectNode);
+        if (('(' + collapsed + ')' + alias).length <= dml.collapseSubqueriesShorterThan) {
+          return '(' + collapsed + ')' + alias;
+        }
+      }
+
+      // Expanded: use subquery collapse settings for the inner SELECT
+      const savedCollapse = dml.collapseShortStatements;
+      const savedThreshold = dml.collapseStatementsShorterThan;
+      (this.config.dml as any).collapseShortStatements = dml.collapseShortSubqueries;
+      (this.config.dml as any).collapseStatementsShorterThan = dml.collapseSubqueriesShorterThan;
+      const innerFormatted = this.formatNode(node.inner[0], bi + 1);
+      (this.config.dml as any).collapseShortStatements = savedCollapse;
+      (this.config.dml as any).collapseStatementsShorterThan = savedThreshold;
+
+      return '(\n' + innerFormatted + '\n' + indent + ')' + alias;
+    }
+
     const inner = node.inner.map(n => this.formatNode(n)).join(', ');
-    return `(${inner})`;
+    return `(${inner})` + this.formatParenGroupAlias(node);
   }
 }
 

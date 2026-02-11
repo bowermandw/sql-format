@@ -258,6 +258,7 @@ export interface ConstraintNode {
 export interface ParenGroupNode {
   type: 'parenGroup';
   inner: SqlNode[];
+  alias?: { asToken?: Token; name: Token };
 }
 
 export interface IdentifierNode {
