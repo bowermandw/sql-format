@@ -348,7 +348,9 @@ class Formatter {
       if (maxExprWidth > 0) aliasAlignWidth = maxExprWidth;
     }
 
+    this.indent = baseIndent + 1;
     const cols = node.columns.map(c => this.formatSelectItem(c, aliasAlignWidth));
+    this.indent = baseIndent;
 
     const leadingCommas = this.config.lists.commas.placeCommasBeforeItems;
 
@@ -831,11 +833,19 @@ class Formatter {
     parts.push(caseLine);
 
     const whenIndent = this.indentStr(this.indent + 1);
+    const thenAlignment = this.config.caseExpressions.thenAlignment;
+    let thenIndent: string;
+    if (thenAlignment === 'toWhen') {
+      thenIndent = whenIndent;
+    } else {
+      // 'indentedFromWhen' or default
+      thenIndent = whenIndent + this.tabStr;
+    }
     for (const wc of node.whenClauses) {
       let whenLine = whenIndent + this.kw('WHEN') + ' ' + this.formatNode(wc.condition);
       if (this.config.caseExpressions.placeThenOnNewLine) {
         parts.push(whenLine);
-        parts.push(whenIndent + '    ' + this.kw('THEN') + ' ' + this.formatNode(wc.result));
+        parts.push(thenIndent + this.kw('THEN') + ' ' + this.formatNode(wc.result));
       } else {
         whenLine += ' ' + this.kw('THEN') + ' ' + this.formatNode(wc.result);
         parts.push(whenLine);
