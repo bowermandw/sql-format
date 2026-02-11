@@ -258,11 +258,12 @@ class Formatter {
   // --- CREATE TABLE ---
 
   private formatCreateTable(node: CreateTableNode): string {
+    const baseIndent = this.indentStr();
     const kw = node.keywords.map(t => this.kw(t.value)).join(' ');
     const name = this.formatNode(node.name);
-    const parts: string[] = [`${kw} ${name}`];
-    parts.push('(');
-    const indent = this.indentStr(1);
+    const parts: string[] = [`${baseIndent}${kw} ${name}`];
+    parts.push(baseIndent + '(');
+    const colIndent = this.indentStr(this.indent + 1);
     let nameWidth = 0;
     if (this.config.ddl.alignDataTypesAndConstraints && node.columns.length > 1) {
       nameWidth = Math.max(...node.columns.map(c => {
@@ -272,11 +273,11 @@ class Formatter {
         return 0;
       }));
     }
-    const colStrs = node.columns.map(c => indent + this.formatColumnDef(c as ColumnDefNode, nameWidth));
+    const colStrs = node.columns.map(c => colIndent + this.formatColumnDef(c as ColumnDefNode, nameWidth));
     parts.push(colStrs.join(',\n'));
-    parts.push(')');
+    parts.push(baseIndent + ')');
     if (node.onFilegroup && node.onFilegroup.length > 0) {
-      parts.push(node.onFilegroup.map(t => this.kw(t.value)).join(' '));
+      parts.push(baseIndent + node.onFilegroup.map(t => this.kw(t.value)).join(' '));
     }
     return parts.join('\n');
   }
