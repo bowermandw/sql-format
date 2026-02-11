@@ -14,6 +14,7 @@ Options:
   --enclose-datatypes <mode>              withBrackets | withoutBrackets | asis
   --insert-semicolons                     Insert semicolons after each statement
   --line-ending <lf|crlf>                 Line ending style (default: lf)
+  -i, --in-place                          Overwrite the input file with formatted output
   --tokens                                Print token list (debug mode)
   --ast                                   Print AST as JSON (debug mode)
   --help                                  Show this help message
@@ -32,6 +33,7 @@ function main(): void {
   let encloseDataTypes: string | undefined;
   let insertSemicolons = false;
   let lineEnding: string | undefined;
+  let inPlace = false;
   let debugTokens = false;
   let debugAst = false;
 
@@ -50,6 +52,8 @@ function main(): void {
       insertSemicolons = true;
     } else if (arg === '--line-ending') {
       lineEnding = args[++i];
+    } else if (arg === '--in-place' || arg === '-i') {
+      inPlace = true;
     } else if (arg === '--tokens') {
       debugTokens = true;
     } else if (arg === '--ast') {
@@ -157,7 +161,15 @@ function main(): void {
 
   // Format
   const output = format(ast, config);
-  process.stdout.write(output);
+  if (inPlace) {
+    if (!inputPath) {
+      console.error('Error: --in-place requires an input file (cannot use with stdin)');
+      process.exit(1);
+    }
+    fs.writeFileSync(path.resolve(inputPath), output, 'utf-8');
+  } else {
+    process.stdout.write(output);
+  }
 }
 
 /** Read a file, detecting UTF-16 LE/BE via BOM and falling back to UTF-8. */
