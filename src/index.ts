@@ -13,6 +13,7 @@ Options:
   --enclose-identifiers <mode>            withBrackets | withoutBrackets | asis
   --enclose-datatypes <mode>              withBrackets | withoutBrackets | asis
   --insert-semicolons                     Insert semicolons after each statement
+  --line-ending <lf|crlf>                 Line ending style (default: lf)
   --tokens                                Print token list (debug mode)
   --ast                                   Print AST as JSON (debug mode)
   --help                                  Show this help message
@@ -30,6 +31,7 @@ function main(): void {
   let encloseIdentifiers: string | undefined;
   let encloseDataTypes: string | undefined;
   let insertSemicolons = false;
+  let lineEnding: string | undefined;
   let debugTokens = false;
   let debugAst = false;
 
@@ -46,6 +48,8 @@ function main(): void {
       encloseDataTypes = args[++i];
     } else if (arg === '--insert-semicolons') {
       insertSemicolons = true;
+    } else if (arg === '--line-ending') {
+      lineEnding = args[++i];
     } else if (arg === '--tokens') {
       debugTokens = true;
     } else if (arg === '--ast') {
@@ -113,6 +117,19 @@ function main(): void {
       whitespace: {
         ...config.whitespace,
         insertSemicolons: 'insert',
+      },
+    };
+  }
+  if (lineEnding) {
+    if (!['lf', 'crlf'].includes(lineEnding)) {
+      console.error(`Error: --line-ending must be lf or crlf`);
+      process.exit(1);
+    }
+    config = {
+      ...config,
+      whitespace: {
+        ...config.whitespace,
+        lineEnding: lineEnding as 'lf' | 'crlf',
       },
     };
   }

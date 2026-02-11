@@ -10,6 +10,7 @@ export interface FormatConfig {
   whitespace: {
     tabBehavior: 'onlySpaces' | 'onlyTabs' | 'tabsWherePossible';
     numberOfSpacesInTab: number;
+    lineEnding: 'lf' | 'crlf';
     wrapLongLines: boolean;
     wrapLinesLongerThan: number;
     whitespaceBeforeSemicolon: 'none' | 'spaceBefore' | 'newLineBefore';
@@ -181,6 +182,7 @@ export const DEFAULT_CONFIG: FormatConfig = {
   whitespace: {
     tabBehavior: 'onlySpaces',
     numberOfSpacesInTab: 4,
+    lineEnding: 'lf',
     wrapLongLines: true,
     wrapLinesLongerThan: 120,
     whitespaceBeforeSemicolon: 'none',

@@ -5,7 +5,11 @@ import { caseWord, categorizeWord } from './casing';
 
 export function format(ast: BatchNode, config: FormatConfig): string {
   const f = new Formatter(config);
-  return f.formatBatch(ast);
+  let result = f.formatBatch(ast);
+  if (config.whitespace.lineEnding === 'crlf') {
+    result = result.replace(/\n/g, '\r\n');
+  }
+  return result;
 }
 
 class Formatter {
