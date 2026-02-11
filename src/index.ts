@@ -67,7 +67,7 @@ function main(): void {
       console.error(`Error: file not found: ${resolved}`);
       process.exit(1);
     }
-    input = fs.readFileSync(resolved, 'utf-8');
+    input = readFileWithEncoding(resolved);
   } else {
     // Read from stdin
     input = fs.readFileSync(0, 'utf-8');
@@ -158,6 +158,36 @@ function main(): void {
   // Format
   const output = format(ast, config);
   process.stdout.write(output);
+}
+
+/** Read a file, detecting UTF-16 LE/BE via BOM and falling back to UTF-8. */
+function readFileWithEncoding(filePath: string): string {
+  const buf = fs.readFileSync(filePath);
+
+  // UTF-16 LE BOM: 0xFF 0xFE
+  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) {
+    return buf.toString('utf16le').slice(1); // skip BOM
+  }
+
+  // UTF-16 BE BOM: 0xFE 0xFF
+  if (buf.length >= 2 && buf[0] === 0xFE && buf[1] === 0xFF) {
+    // Node doesn't have utf16be, swap bytes then use utf16le
+    for (let i = 0; i < buf.length - 1; i += 2) {
+      const tmp = buf[i];
+      buf[i] = buf[i + 1];
+      buf[i + 1] = tmp;
+    }
+    return buf.toString('utf16le').slice(1); // skip BOM
+  }
+
+  let str = buf.toString('utf-8');
+
+  // Strip UTF-8 BOM if present
+  if (str.charCodeAt(0) === 0xFEFF) {
+    str = str.slice(1);
+  }
+
+  return str;
 }
 
 main();
