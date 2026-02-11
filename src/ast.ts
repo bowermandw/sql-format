@@ -33,7 +33,8 @@ export type SqlNode =
   | IdentifierNode
   | LiteralNode
   | RawTokenNode
-  | ColumnListNode;
+  | ColumnListNode
+  | PivotNode;
 
 export interface BatchNode {
   type: 'batch';
@@ -255,16 +256,29 @@ export interface ConstraintNode {
   references?: SqlNode;
 }
 
+export interface PivotNode {
+  type: 'pivot';
+  pivotToken: Token;       // PIVOT or UNPIVOT keyword
+  aggregation: SqlNode;    // PIVOT: SUM(col) / UNPIVOT: value_column
+  forToken: Token;
+  pivotColumn: SqlNode;    // column in FOR clause
+  inToken: Token;
+  values: SqlNode[];       // the IN (...) list
+  alias?: { asToken?: Token; name: Token };
+}
+
 export interface ParenGroupNode {
   type: 'parenGroup';
   inner: SqlNode[];
   alias?: { asToken?: Token; name: Token };
+  pivot?: PivotNode;
 }
 
 export interface IdentifierNode {
   type: 'identifier';
   parts: Token[];            // schema.table.column
   alias?: { asToken?: Token; name: Token };
+  pivot?: PivotNode;
 }
 
 export interface LiteralNode {

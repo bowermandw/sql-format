@@ -348,6 +348,74 @@ AS BEGIN SELECT 1 END`;
   });
 });
 
+describe('PIVOT / UNPIVOT', () => {
+  it('formats a basic PIVOT query', () => {
+    const sql = `SELECT VendorID, [250] AS Emp1, [251] AS Emp2
+FROM (SELECT VendorID, EmployeeID, Amount FROM Purchasing.PurchaseOrderHeader) AS src
+PIVOT (SUM(Amount) FOR EmployeeID IN ([250], [251], [252])) AS pvt`;
+    const result = formatSQL(sql);
+    expect(result).toContain('PIVOT');
+    expect(result).toContain('SUM(Amount)');
+    expect(result).toContain('FOR');
+    expect(result).toContain('IN');
+    expect(result).toContain('AS pvt');
+  });
+
+  it('formats PIVOT with correct indentation structure', () => {
+    const sql = `SELECT VendorID, [250], [251]
+FROM (SELECT VendorID, EmployeeID, Amount FROM Purchasing.PurchaseOrderHeader) AS src
+PIVOT (SUM(Amount) FOR EmployeeID IN ([250], [251])) AS pvt`;
+    const result = formatSQL(sql);
+    const lines = result.split('\n');
+    // Find the PIVOT line
+    const pivotLine = lines.find(l => l.trim() === 'PIVOT');
+    expect(pivotLine).toBeDefined();
+    // Verify the structure: PIVOT, (, aggregation, FOR...IN, ), has proper nesting
+    const pivotIdx = lines.indexOf(pivotLine!);
+    expect(lines[pivotIdx + 1].trim()).toBe('(');
+    expect(lines[pivotIdx + 2].trim()).toContain('SUM(Amount)');
+    expect(lines[pivotIdx + 3].trim()).toMatch(/^FOR/);
+  });
+
+  it('formats UNPIVOT query', () => {
+    const sql = `SELECT VendorID, Employee, Orders
+FROM pvt
+UNPIVOT (Orders FOR Employee IN ([Emp1], [Emp2], [Emp3])) AS unpvt`;
+    const result = formatSQL(sql);
+    expect(result).toContain('UNPIVOT');
+    expect(result).toContain('FOR');
+    expect(result).toContain('IN');
+    expect(result).toContain('AS unpvt');
+  });
+
+  it('PIVOT output is idempotent', () => {
+    const sql = `SELECT VendorID, [250], [251]
+FROM (SELECT VendorID, EmployeeID, Amount FROM Purchasing.PurchaseOrderHeader) AS src
+PIVOT (SUM(Amount) FOR EmployeeID IN ([250], [251])) AS pvt`;
+    const first = formatSQL(sql);
+    const second = formatSQL(first);
+    expect(second).toBe(first);
+  });
+
+  it('UNPIVOT output is idempotent', () => {
+    const sql = `SELECT VendorID, Employee, Orders
+FROM pvt
+UNPIVOT (Orders FOR Employee IN ([Emp1], [Emp2], [Emp3])) AS unpvt`;
+    const first = formatSQL(sql);
+    const second = formatSQL(first);
+    expect(second).toBe(first);
+  });
+
+  it('PIVOT does not consume PIVOT/UNPIVOT as alias', () => {
+    const sql = `SELECT * FROM t PIVOT (SUM(x) FOR y IN ([a], [b])) AS p`;
+    const result = formatSQL(sql);
+    expect(result).toContain('PIVOT');
+    // PIVOT should appear as a keyword with a paren block, not as a bare alias of t
+    expect(result).toContain('SUM(x)');
+    expect(result).toContain('AS p');
+  });
+});
+
 describe('formatter with smartish_style.json', () => {
   const stylePath = path.resolve(__dirname, '../smartish_style.json');
 

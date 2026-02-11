@@ -6,6 +6,7 @@ import {
   RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode,
   InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode,
   ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode,
+  PivotNode,
 } from './ast';
 
 export function parse(tokens: Token[]): BatchNode {
@@ -206,6 +207,11 @@ class Parser {
     // DROP TABLE
     if (upper === 'DROP') {
       return this.parseDrop();
+    }
+
+    // TRUNCATE TABLE
+    if (upper === 'TRUNCATE') {
+      return this.parseTruncate();
     }
 
     // Fallback: consume one token as RawTokenNode
@@ -585,14 +591,72 @@ class Parser {
             'CROSS', 'ON', 'SET', 'VALUES', 'END', 'ELSE', 'WHEN', 'THEN',
             'AS', 'GO', 'BEGIN', 'IF', 'DECLARE', 'PRINT', 'RETURN', 'EXEC',
             'EXECUTE', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP',
-            'FOR'].includes(val);
+            'FOR', 'PIVOT', 'UNPIVOT'].includes(val);
   }
 
   // --- FROM / JOIN ---
 
   private parseTableSource(): SqlNode {
     const table = this.parseTableReference();
+
+    // Check for PIVOT/UNPIVOT after table reference
+    if (this.isWord('PIVOT') || this.isWord('UNPIVOT')) {
+      const pivot = this.parsePivot();
+      if (table.type === 'parenGroup' || table.type === 'identifier') {
+        return { ...table, pivot } as any;
+      }
+    }
+
     return table;
+  }
+
+  private parsePivot(): PivotNode {
+    const pivotToken = this.advance(); // PIVOT or UNPIVOT
+
+    // Expect opening paren
+    if (this.isType(TokenType.LeftParen)) this.advance();
+
+    // Parse aggregation expression (e.g., SUM(Amount)) or value column for UNPIVOT
+    const aggregation = this.parseExpression();
+
+    // FOR keyword
+    const forToken = this.expectWord('FOR');
+
+    // Pivot column
+    const pivotColumn = this.parseQualifiedName();
+
+    // IN keyword
+    const inToken = this.expectWord('IN');
+
+    // Parse IN (...) values list
+    const values: SqlNode[] = [];
+    if (this.isType(TokenType.LeftParen)) {
+      this.advance(); // (
+      if (!this.isType(TokenType.RightParen)) {
+        values.push(this.parseExpression());
+        while (this.isType(TokenType.Comma)) {
+          this.advance();
+          values.push(this.parseExpression());
+        }
+      }
+      if (this.isType(TokenType.RightParen)) this.advance(); // )
+    }
+
+    // Closing paren of PIVOT(...)
+    if (this.isType(TokenType.RightParen)) this.advance();
+
+    // Optional alias
+    let alias: { asToken?: Token; name: Token } | undefined;
+    if (this.isWord('AS')) {
+      const asToken = this.advance();
+      const name = this.advance();
+      alias = { asToken, name };
+    } else if ((this.isWord() || this.isType(TokenType.QuotedIdentifier)) && !this.isClauseKeyword() && !this.isJoinKeyword()) {
+      const name = this.advance();
+      alias = { name };
+    }
+
+    return { type: 'pivot', pivotToken, aggregation, forToken, pivotColumn, inToken, values, alias };
   }
 
   private parseTableReference(): SqlNode {
@@ -1008,6 +1072,19 @@ class Parser {
     }
 
     // Fallback for other DROP statements (DROP INDEX, DROP VIEW, etc.)
+    return this.consumeRestAsRaw(keywords);
+  }
+
+  private parseTruncate(): SqlNode {
+    const keywords: Token[] = [];
+    keywords.push(this.advance()); // TRUNCATE
+
+    if (this.isWord('TABLE')) {
+      keywords.push(this.advance()); // TABLE
+      const name = this.parseQualifiedName();
+      return { type: 'dropTable', keywords, name } as DropTableNode;
+    }
+
     return this.consumeRestAsRaw(keywords);
   }
 

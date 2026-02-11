@@ -1,5 +1,5 @@
 import { Token, TokenType } from './tokens';
-import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, ConstraintNode } from './ast';
+import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, ConstraintNode, PivotNode } from './ast';
 import { FormatConfig } from './config';
 import { caseWord, categorizeWord } from './casing';
 
@@ -86,16 +86,54 @@ class Formatter {
     }
   }
 
+  /** Get the first token from an AST node (for extracting leading comments). */
+  private getFirstToken(node: SqlNode): Token | undefined {
+    switch (node.type) {
+      case 'select': return node.selectToken;
+      case 'insert': return node.insertToken;
+      case 'update': return node.updateToken;
+      case 'delete': return node.deleteToken;
+      case 'set': return node.token;
+      case 'declare': return node.token;
+      case 'print': return node.token;
+      case 'return': return node.token;
+      case 'beginEnd': return node.beginToken;
+      case 'ifElse': return node.ifToken;
+      case 'cte': return node.withToken;
+      case 'createProcedure': return node.keywords[0];
+      case 'createTable': return node.keywords[0];
+      case 'dropTable': return node.keywords[0];
+      case 'case': return node.caseToken;
+      case 'identifier': return node.parts[0];
+      case 'literal': return node.token;
+      case 'rawToken': return node.token;
+      case 'pivot': return node.pivotToken;
+      case 'expression': return this.getFirstToken(node.left);
+      default: return undefined;
+    }
+  }
+
+  /** Format leading comments for a node, using the current indentation. */
+  private formatLeadingComments(node: SqlNode): string {
+    const token = this.getFirstToken(node);
+    if (!token?.leadingComments?.length) return '';
+    const indent = this.indentStr();
+    return token.leadingComments
+      .map(c => indent + c.value)
+      .join('\n') + '\n';
+  }
+
   /**
    * Format a statement and append a semicolon if it's a leaf statement
    * and insertSemicolons is 'insert'.
    */
   private formatStatement(node: SqlNode): string {
+    const comments = this.formatLeadingComments(node);
     const formatted = this.formatNode(node);
     if (this.isLeafStatement(node)) {
-      return this.withSemicolon(formatted);
+      return comments + this.withSemicolon(formatted);
     }
-    return formatted;
+    return comments + formatted;
   }
 
   // --- Batch ---
@@ -152,6 +190,7 @@ class Formatter {
       case 'inExpression': return this.formatInExpression(node);
       case 'between': return this.formatBetween(node);
       case 'exists': return this.formatExists(node);
+      case 'pivot': return this.formatPivot(node);
       case 'parenGroup': return this.formatParenGroup(node);
       case 'where': return this.formatWhere(node);
       case 'groupBy': return this.formatGroupBy(node);
@@ -255,9 +294,10 @@ class Formatter {
   // --- DROP TABLE ---
 
   private formatDropTable(node: DropTableNode): string {
+    const indent = this.indentStr();
     const kw = node.keywords.map(t => this.kw(t.value)).join(' ');
     const name = this.formatNode(node.name);
-    return `${kw} ${name}`;
+    return `${indent}${kw} ${name}`;
   }
 
   // --- CONSTRAINT ---
@@ -907,6 +947,9 @@ class Formatter {
         s += ' ' + this.formatIdentifierPart(node.alias.name);
       }
     }
+    if (node.pivot) {
+      s += '\n' + this.formatPivot(node.pivot, this.indent + 1);
+    }
     return s;
   }
 
@@ -1002,6 +1045,38 @@ class Formatter {
     return `${notStr}${this.kw('EXISTS')} (${subquery})`;
   }
 
+  // --- PIVOT / UNPIVOT ---
+
+  private formatPivot(node: PivotNode, baseIndent?: number): string {
+    const bi = baseIndent ?? this.indent;
+    const indent = this.indentStr(bi);
+    const innerIndent = this.indentStr(bi + 1);
+    const lines: string[] = [];
+
+    lines.push(indent + this.kw(node.pivotToken.value));
+    lines.push(indent + '(');
+
+    // Aggregation expression
+    lines.push(innerIndent + this.formatNode(node.aggregation));
+
+    // FOR column IN (values)
+    const values = node.values.map(v => this.formatNode(v)).join(', ');
+    lines.push(innerIndent + this.kw('FOR') + ' ' + this.formatNode(node.pivotColumn) + ' ' + this.kw('IN') + ' (' + values + ')');
+
+    // Closing paren + alias
+    let closeLine = indent + ')';
+    if (node.alias) {
+      if (node.alias.asToken) {
+        closeLine += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(node.alias.name);
+      } else {
+        closeLine += ' ' + this.formatIdentifierPart(node.alias.name);
+      }
+    }
+    lines.push(closeLine);
+
+    return lines.join('\n');
+  }
+
   // --- Paren group ---
 
   private formatParenGroupAlias(node: ParenGroupNode): string {
@@ -1014,15 +1089,16 @@ class Formatter {
 
   private formatParenGroup(node: ParenGroupNode, baseIndent?: number): string {
     const isSubquery = node.inner.length === 1 && node.inner[0].type === 'select';
+    const bi = baseIndent ?? this.indent;
+    const pivotSuffix = node.pivot ? '\n' + this.formatPivot(node.pivot, bi) : '';
 
     if (isSubquery) {
-      const bi = baseIndent ?? this.indent;
       const indent = this.indentStr(bi);
       const dml = this.config.dml;
       const alias = this.formatParenGroupAlias(node);
 
-      // Try collapsing the subquery if configured
-      if (dml.collapseShortSubqueries) {
+      // Try collapsing the subquery if configured (skip collapse if pivot attached)
+      if (dml.collapseShortSubqueries && !node.pivot) {
         const collapsed = this.collapseSelect(node.inner[0] as SelectNode);
         if (('(' + collapsed + ')' + alias).length <= dml.collapseSubqueriesShorterThan) {
           return '(' + collapsed + ')' + alias;
@@ -1038,11 +1114,11 @@ class Formatter {
       (this.config.dml as any).collapseShortStatements = savedCollapse;
       (this.config.dml as any).collapseStatementsShorterThan = savedThreshold;
 
-      return '(\n' + innerFormatted + '\n' + indent + ')' + alias;
+      return '(\n' + innerFormatted + '\n' + indent + ')' + alias + pivotSuffix;
     }
 
     const inner = node.inner.map(n => this.formatNode(n)).join(', ');
-    return `(${inner})` + this.formatParenGroupAlias(node);
+    return `(${inner})` + this.formatParenGroupAlias(node) + pivotSuffix;
   }
 }
 
