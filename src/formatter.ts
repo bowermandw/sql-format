@@ -910,8 +910,26 @@ class Formatter {
 
   private formatFunctionCall(node: FunctionCallNode): string {
     const name = this.formatNode(node.name);
-    const args = node.args.map(a => this.formatNode(a)).join(', ');
-    return `${name}(${args})`;
+    const formattedArgs = node.args.map(a => this.formatNode(a));
+    const inline = `${name}(${formattedArgs.join(', ')})`;
+
+    // If any argument is multi-line, expand the function call
+    if (formattedArgs.some(a => a.includes('\n'))) {
+      const innerIndent = this.indentStr(this.indent + 1);
+      const outerIndent = this.indentStr(this.indent);
+      // Re-format args at the inner indent level so nested constructs align
+      const expanded = node.args.map((a, i) => {
+        const formatted = this.formatNode(a, this.indent + 1);
+        const comma = i < node.args.length - 1 ? ',' : '';
+        // First line needs innerIndent; subsequent lines already have absolute indentation
+        const lines = (innerIndent + formatted).split('\n');
+        lines[lines.length - 1] += comma;
+        return lines.join('\n');
+      });
+      return `${name} (\n${expanded.join('\n')}\n${outerIndent})`;
+    }
+
+    return inline;
   }
 
   // --- Data types ---
