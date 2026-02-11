@@ -1,0 +1,895 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "sql-format-style",
+  "title": "SQL Format Style Configuration",
+  "description": "Configuration schema for T-SQL code formatting, reverse-engineered from RedGate SQL Prompt style files and the SQL Prompt Formatting Wallchart.",
+  "type": "object",
+  "properties": {
+
+    "metadata": {
+      "description": "Style identity metadata.",
+      "type": "object",
+      "properties": {
+        "id":   { "type": "string", "description": "Unique identifier (UUID) for this style." },
+        "name": { "type": "string", "description": "Human-readable name of the style." }
+      },
+      "required": ["id", "name"]
+    },
+
+    "whitespace": {
+      "description": "Global whitespace, wrapping, semicolons, and blank-line rules.",
+      "type": "object",
+      "properties": {
+        "tabBehavior": {
+          "description": "Whether to use spaces, tabs, or tabs where possible.",
+          "type": "string",
+          "enum": ["onlySpaces", "onlyTabs", "tabsWherePossible"],
+          "default": "onlySpaces"
+        },
+        "numberOfSpacesInTab": {
+          "description": "How many spaces equal one tab stop.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16,
+          "default": 4
+        },
+        "wrapLongLines": {
+          "description": "Whether to wrap lines that exceed the max line length.",
+          "type": "boolean",
+          "default": true
+        },
+        "wrapLinesLongerThan": {
+          "description": "Maximum line width before wrapping.",
+          "type": "integer",
+          "minimum": 40,
+          "maximum": 300,
+          "default": 120
+        },
+        "whitespaceBeforeSemicolon": {
+          "description": "Whitespace to place before a semicolon.",
+          "type": "string",
+          "enum": ["none", "spaceBefore", "newLineBefore"],
+          "default": "none"
+        },
+        "insertSemicolons": {
+          "description": "Insert a semicolon statement terminator after each complete statement. Also available as CLI flag: --insert-semicolons. In T-SQL, semicolons are optional in most places but are best practice and required before WITH (CTEs) and after MERGE/THROW.",
+          "type": "string",
+          "enum": ["insert", "remove", "asis"],
+          "default": "asis"
+        },
+        "newLines": {
+          "description": "Blank-line controls between and within statements.",
+          "type": "object",
+          "properties": {
+            "preserveExistingEmptyLinesBetweenStatements": {
+              "description": "Keep existing blank lines between statements as-is.",
+              "type": "boolean",
+              "default": true
+            },
+            "emptyLinesBetweenStatements": {
+              "description": "Number of blank lines to insert between statements.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3,
+              "default": 1
+            },
+            "emptyLinesAfterBatchSeparator": {
+              "description": "Number of blank lines to insert after GO.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3,
+              "default": 1
+            },
+            "preserveExistingEmptyLinesAfterBatchSeparator": {
+              "description": "Keep existing blank lines after GO as-is.",
+              "type": "boolean",
+              "default": true
+            },
+            "preserveExistingEmptyLinesWithinStatements": {
+              "description": "Keep existing blank lines inside statements as-is.",
+              "type": "boolean",
+              "default": true
+            }
+          }
+        }
+      }
+    },
+
+    "lists": {
+      "description": "Formatting for comma-separated lists (SELECT columns, GROUP BY items, parameter lists, etc.).",
+      "type": "object",
+      "properties": {
+        "placeFirstItemOnNewLine": {
+          "description": "Whether to place the first list item on a new line after the keyword.",
+          "type": "string",
+          "enum": ["always", "never", "onlyIfSubsequentItems"],
+          "default": "never"
+        },
+        "placeSubsequentItemsOnNewLines": {
+          "description": "Whether to place each subsequent list item on its own line.",
+          "type": "string",
+          "enum": ["always", "never", "ifLongerThanWrapColumn"],
+          "default": "always"
+        },
+        "alignSubsequentItemsWithFirstItem": {
+          "description": "Align subsequent list items to the column position of the first item.",
+          "type": "boolean",
+          "default": false
+        },
+        "alignItemsAcrossClauses": {
+          "description": "Align list items across different clauses (e.g., SELECT and GROUP BY columns line up).",
+          "type": "boolean",
+          "default": false
+        },
+        "indentListItems": {
+          "description": "Indent list items relative to the clause keyword.",
+          "type": "boolean",
+          "default": true
+        },
+        "alignItemsToTabStops": {
+          "description": "Snap list item indentation to tab-stop boundaries.",
+          "type": "boolean",
+          "default": false
+        },
+        "alignAliases": {
+          "description": "Align column/table aliases to the same column position.",
+          "type": "boolean",
+          "default": false
+        },
+        "alignComments": {
+          "description": "Align inline comments to the same column position.",
+          "type": "boolean",
+          "default": false
+        },
+        "commas": {
+          "description": "Comma placement and spacing within lists.",
+          "type": "object",
+          "properties": {
+            "placeCommasBeforeItems": {
+              "description": "Place commas at the start of each line (leading commas) instead of trailing.",
+              "type": "boolean",
+              "default": false
+            },
+            "commaAlignment": {
+              "description": "When using leading commas, how to align them.",
+              "type": "string",
+              "enum": ["beforeItem", "toList", "toStatement"],
+              "default": "beforeItem"
+            },
+            "addSpaceBeforeComma": {
+              "description": "Insert a space before each comma.",
+              "type": "boolean",
+              "default": false
+            },
+            "addSpaceAfterComma": {
+              "description": "Insert a space after each comma (when items are on the same line).",
+              "type": "boolean",
+              "default": true
+            }
+          }
+        }
+      }
+    },
+
+    "parentheses": {
+      "description": "Formatting for general parenthesized expressions.",
+      "type": "object",
+      "properties": {
+        "parenthesisStyle": {
+          "description": "How parentheses and their contents are laid out. 'expandedToStatement': opening paren on same line, contents indented, closing paren aligned to statement. 'compactToStatement': like expanded but closing paren on same line as last content. 'expandedToParenthesis': closing paren aligned to opening paren. 'compactToParenthesis': like expanded-to-paren but compact.",
+          "type": "string",
+          "enum": [
+            "expandedToStatement",
+            "compactToStatement",
+            "expandedToParenthesis",
+            "compactToParenthesis"
+          ],
+          "default": "expandedToStatement"
+        },
+        "indentParenthesesContents": {
+          "description": "Indent the contents of parentheses.",
+          "type": "boolean",
+          "default": true
+        },
+        "collapseShortParenthesisContents": {
+          "description": "Collapse parenthesized content to a single line if short enough.",
+          "type": "boolean",
+          "default": true
+        },
+        "collapseParenthesesShorterThan": {
+          "description": "Character-length threshold for collapsing parenthesized content.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 160,
+          "default": 78
+        },
+        "addSpacesAroundParentheses": {
+          "description": "Add a space before '(' and after ')'.",
+          "type": "boolean",
+          "default": false
+        },
+        "addSpacesAroundParenthesesContents": {
+          "description": "Add a space after '(' and before ')'.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+
+    "casing": {
+      "description": "Case transformation for keywords, functions, types, and identifiers.",
+      "type": "object",
+      "properties": {
+        "reservedKeywords": {
+          "description": "Case for SQL reserved keywords (SELECT, FROM, WHERE, JOIN, etc.).",
+          "type": "string",
+          "enum": ["asis", "lowercase", "uppercase", "lowerCamelCase", "upperCamelCase"],
+          "default": "uppercase"
+        },
+        "builtInFunctions": {
+          "description": "Case for built-in SQL functions (COUNT, SUM, ISNULL, COALESCE, etc.).",
+          "type": "string",
+          "enum": ["asis", "lowercase", "uppercase", "lowerCamelCase", "upperCamelCase"],
+          "default": "uppercase"
+        },
+        "builtInDataTypes": {
+          "description": "Case for built-in data types (INT, VARCHAR, DATETIME, etc.).",
+          "type": "string",
+          "enum": ["asis", "lowercase", "uppercase", "lowerCamelCase", "upperCamelCase"],
+          "default": "uppercase"
+        },
+        "globalVariables": {
+          "description": "Case for global variables (@@IDENTITY, @@ROWCOUNT, @@ERROR, etc.).",
+          "type": "string",
+          "enum": ["asis", "lowercase", "uppercase", "lowerCamelCase", "upperCamelCase"],
+          "default": "uppercase"
+        },
+        "useObjectDefinitionCase": {
+          "description": "Preserve the original case of user-defined objects (tables, columns, procs) as they were defined.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+
+    "identifiers": {
+      "description": "Identifier quoting / bracket-enclosure rules. Also available as CLI flag: --enclose-identifiers withBrackets|withoutBrackets.",
+      "type": "object",
+      "properties": {
+        "encloseIdentifiers": {
+          "description": "Whether to wrap user-defined identifiers (columns, tables, schemas, aliases) in square brackets. 'withBrackets': always enclose — column1 becomes [column1], dbo.tableName becomes [dbo].[tableName]. 'withoutBrackets': strip existing brackets and leave identifiers bare. 'asis': preserve whatever quoting already exists.",
+          "type": "string",
+          "enum": ["asis", "withBrackets", "withoutBrackets"],
+          "default": "asis"
+        },
+        "encloseIdentifiersScope": {
+          "description": "Which identifiers to enclose. 'all': columns, tables, schemas, aliases, parameters. 'userDefined': only user-defined objects (not keywords, not built-in functions). 'tablesAndColumns': only table names, column names, and schema names.",
+          "type": "string",
+          "enum": ["all", "userDefined", "tablesAndColumns"],
+          "default": "userDefined"
+        },
+        "alwaysBracketReservedWordIdentifiers": {
+          "description": "Always bracket identifiers that happen to be reserved words (e.g., a column named [status] or [name]), regardless of the encloseIdentifiers setting.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+
+    "dml": {
+      "description": "Formatting for DML statements (SELECT, INSERT, UPDATE, DELETE).",
+      "type": "object",
+      "properties": {
+        "clauseAlignment": {
+          "description": "How clause keywords (SELECT, FROM, WHERE, etc.) are aligned.",
+          "type": "string",
+          "enum": ["toStatement", "rightAlignedToStatement", "toFirstStatement"],
+          "default": "toStatement"
+        },
+        "clauseIndentation": {
+          "description": "Number of spaces to indent clause contents from the keyword.",
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 8,
+          "default": 4
+        },
+        "placeDistinctAndTopClausesOnNewLine": {
+          "description": "Place DISTINCT or TOP on its own line after SELECT.",
+          "type": "boolean",
+          "default": false
+        },
+        "addNewLineAfterDistinctAndTopClauses": {
+          "description": "Add a line break after DISTINCT/TOP before the column list.",
+          "type": "boolean",
+          "default": false
+        },
+        "collapseShortStatements": {
+          "description": "Collapse entire DML statements to one line if short enough.",
+          "type": "boolean",
+          "default": true
+        },
+        "collapseStatementsShorterThan": {
+          "description": "Character-length threshold for collapsing DML statements.",
+          "type": "integer",
+          "minimum": 35,
+          "maximum": 160,
+          "default": 78
+        },
+        "collapseShortSubqueries": {
+          "description": "Collapse subqueries to one line if short enough.",
+          "type": "boolean",
+          "default": true
+        },
+        "collapseSubqueriesShorterThan": {
+          "description": "Character-length threshold for collapsing subqueries.",
+          "type": "integer",
+          "minimum": 35,
+          "maximum": 160,
+          "default": 78
+        },
+        "listItems": {
+          "description": "Controls when FROM/WHERE/GROUP BY/ORDER BY list items go on new lines.",
+          "type": "object",
+          "properties": {
+            "placeFromTableOnNewLine": {
+              "description": "Place each FROM table on a new line.",
+              "type": "string",
+              "enum": ["always", "never", "ifSeveralTables"],
+              "default": "always"
+            },
+            "placeWhereConditionOnNewLine": {
+              "description": "Place each WHERE condition on a new line.",
+              "type": "string",
+              "enum": ["always", "never", "ifSeveralConditions"],
+              "default": "always"
+            },
+            "placeGroupByAndOrderByOnNewLine": {
+              "description": "Place each GROUP BY / ORDER BY expression on a new line.",
+              "type": "string",
+              "enum": ["always", "never", "ifSeveralExpressions"],
+              "default": "always"
+            },
+            "placeInsertTableOnNewLine": {
+              "description": "Place the INSERT target table name on a new line.",
+              "type": "boolean",
+              "default": false
+            }
+          }
+        }
+      }
+    },
+
+    "ddl": {
+      "description": "Formatting for DDL statements (CREATE/ALTER TABLE, CREATE/ALTER PROCEDURE, etc.).",
+      "type": "object",
+      "properties": {
+        "parenthesisStyle": {
+          "description": "How parentheses in DDL (column list, parameter list) are laid out.",
+          "type": "string",
+          "enum": [
+            "expandedToStatement",
+            "compactToStatement",
+            "expandedToParenthesis",
+            "compactToParenthesis"
+          ],
+          "default": "expandedToStatement"
+        },
+        "indentParenthesesContents": {
+          "description": "Indent contents of DDL parentheses (column defs, params).",
+          "type": "boolean",
+          "default": true
+        },
+        "alignDataTypesAndConstraints": {
+          "description": "Align data type and constraint columns in CREATE TABLE.",
+          "type": "boolean",
+          "default": false
+        },
+        "placeConstraintsOnNewLines": {
+          "description": "Place constraint definitions (PRIMARY KEY, FOREIGN KEY, etc.) on new lines.",
+          "type": "boolean",
+          "default": true
+        },
+        "placeConstraintColumnsOnNewLines": {
+          "description": "Place columns within constraints on new lines.",
+          "type": "string",
+          "enum": ["always", "never", "ifLongerOrMultipleColumns"],
+          "default": "always"
+        },
+        "indentClauses": {
+          "description": "Indent nested clauses (WITH, ON, etc.) inside DDL.",
+          "type": "boolean",
+          "default": true
+        },
+        "placeFirstProcedureParameterOnNewLine": {
+          "description": "Place the first procedure/function parameter on a new line.",
+          "type": "string",
+          "enum": ["always", "never", "ifSeveralItems"],
+          "default": "always"
+        },
+        "collapseShortStatements": {
+          "description": "Collapse short DDL statements to one line.",
+          "type": "boolean",
+          "default": true
+        },
+        "collapseStatementsShorterThan": {
+          "description": "Character-length threshold for collapsing DDL statements.",
+          "type": "integer",
+          "minimum": 35,
+          "maximum": 160,
+          "default": 78
+        }
+      }
+    },
+
+    "controlFlow": {
+      "description": "Formatting for BEGIN/END, IF/ELSE, WHILE, TRY/CATCH blocks.",
+      "type": "object",
+      "properties": {
+        "placeBeginKeywordOnNewLine": {
+          "description": "Place BEGIN on its own line (vs. on same line as IF/WHILE/etc.).",
+          "type": "boolean",
+          "default": true
+        },
+        "indentBeginEndKeywords": {
+          "description": "Indent BEGIN/END keywords relative to the parent control-flow keyword.",
+          "type": "boolean",
+          "default": false
+        },
+        "indentContentsOfStatements": {
+          "description": "Indent the body inside control-flow blocks.",
+          "type": "boolean",
+          "default": true
+        },
+        "collapseShortStatements": {
+          "description": "Collapse short control-flow blocks to one line.",
+          "type": "boolean",
+          "default": true
+        },
+        "collapseStatementsShorterThan": {
+          "description": "Character-length threshold for collapsing control-flow blocks.",
+          "type": "integer",
+          "minimum": 35,
+          "maximum": 160,
+          "default": 78
+        }
+      }
+    },
+
+    "cte": {
+      "description": "Formatting for Common Table Expressions (WITH ... AS ...).",
+      "type": "object",
+      "properties": {
+        "placeNameOnNewLine": {
+          "description": "Place the CTE name on a new line after WITH.",
+          "type": "boolean",
+          "default": false
+        },
+        "indentName": {
+          "description": "Indent the CTE name relative to WITH.",
+          "type": "boolean",
+          "default": false
+        },
+        "placeColumnsOnNewLine": {
+          "description": "Place the optional CTE column list on a new line.",
+          "type": "boolean",
+          "default": false
+        },
+        "columnAlignment": {
+          "description": "Align CTE column list items.",
+          "type": "boolean",
+          "default": false
+        },
+        "placeAsOnNewLine": {
+          "description": "Place the AS keyword on a new line.",
+          "type": "boolean",
+          "default": false
+        },
+        "asAlignment": {
+          "description": "Alignment of the AS keyword relative to WITH.",
+          "type": "string",
+          "enum": ["leftAlignedToWith", "rightAlignedToWith", "indentedFromWith"],
+          "default": "leftAlignedToWith"
+        },
+        "parenthesisStyle": {
+          "description": "How the CTE body parentheses are formatted.",
+          "type": "string",
+          "enum": [
+            "expandedToStatement",
+            "compactToStatement",
+            "expandedToParenthesis",
+            "compactToParenthesis"
+          ],
+          "default": "expandedToStatement"
+        },
+        "indentContents": {
+          "description": "Indent the query body inside the CTE parentheses.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+
+    "variables": {
+      "description": "Formatting for DECLARE and SET variable statements.",
+      "type": "object",
+      "properties": {
+        "alignDataTypesAndValues": {
+          "description": "Align data types and default values in DECLARE blocks.",
+          "type": "boolean",
+          "default": false
+        },
+        "addSpaceBetweenDataTypeAndPrecision": {
+          "description": "Add a space between data type and precision, e.g., VARCHAR (50) vs VARCHAR(50).",
+          "type": "boolean",
+          "default": false
+        },
+        "placeAssignedValueOnNewLineIfLongerThanMaxLineLength": {
+          "description": "Move the assigned value to a new line if the SET statement exceeds the max line length.",
+          "type": "boolean",
+          "default": false
+        },
+        "placeEqualsSignOnNewLine": {
+          "description": "Place the = sign on a new line in SET assignments.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+
+    "joinStatements": {
+      "description": "Formatting for JOIN clauses and ON conditions.",
+      "type": "object",
+      "properties": {
+        "join": {
+          "description": "JOIN keyword and table placement.",
+          "type": "object",
+          "properties": {
+            "placeOnNewLine": {
+              "description": "Place the JOIN keyword on a new line.",
+              "type": "boolean",
+              "default": true
+            },
+            "keywordAlignment": {
+              "description": "How the JOIN keyword is aligned. 'toFrom': align to FROM. 'rightAlignedToFrom': right-align JOIN to match FROM column. 'indented': indent from FROM. 'toTable': align to the table name.",
+              "type": "string",
+              "enum": ["toFrom", "rightAlignedToFrom", "indented", "toTable"],
+              "default": "toFrom"
+            },
+            "insertEmptyLineBetweenJoinClauses": {
+              "description": "Insert a blank line between consecutive JOIN clauses.",
+              "type": "boolean",
+              "default": false
+            },
+            "placeJoinTableOnNewLine": {
+              "description": "Place the joined table name on a new line after the JOIN keyword.",
+              "type": "boolean",
+              "default": false
+            },
+            "indentJoinTable": {
+              "description": "Indent the joined table name.",
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "on": {
+          "description": "ON keyword and condition placement.",
+          "type": "object",
+          "properties": {
+            "placeOnNewLine": {
+              "description": "Place the ON keyword on a new line.",
+              "type": "boolean",
+              "default": true
+            },
+            "keywordAlignment": {
+              "description": "How the ON keyword is aligned. 'indented': indent from JOIN. 'toJoin': align to JOIN keyword. 'rightAlignedToJoin': right-align to JOIN.",
+              "type": "string",
+              "enum": ["indented", "toJoin", "rightAlignedToJoin"],
+              "default": "indented"
+            },
+            "placeConditionOnNewLine": {
+              "description": "Place the ON condition expression on a new line after ON.",
+              "type": "boolean",
+              "default": false
+            },
+            "conditionAlignment": {
+              "description": "How the ON condition is aligned. 'indented': indent from ON. 'toOn': align to ON. 'toTable': align to the table name.",
+              "type": "string",
+              "enum": ["indented", "toOn", "toTable"],
+              "default": "indented"
+            }
+          }
+        }
+      }
+    },
+
+    "insertStatements": {
+      "description": "Formatting specific to INSERT statements.",
+      "type": "object",
+      "properties": {
+        "columnList": {
+          "description": "Formatting for the INSERT column list.",
+          "type": "object",
+          "properties": {
+            "parenthesisStyle": {
+              "type": "string",
+              "enum": [
+                "expandedToStatement",
+                "compactToStatement",
+                "expandedToParenthesis",
+                "compactToParenthesis"
+              ],
+              "default": "expandedToStatement"
+            },
+            "indentContents": {
+              "description": "Indent columns inside the parentheses.",
+              "type": "boolean",
+              "default": true
+            },
+            "placeSubsequentColumnsOnNewLines": {
+              "description": "Whether to place each column on its own line.",
+              "type": "string",
+              "enum": ["always", "never", "ifLongerThanMaxLineLength"],
+              "default": "always"
+            }
+          }
+        },
+        "values": {
+          "description": "Formatting for the VALUES clause.",
+          "type": "object",
+          "properties": {
+            "parenthesisStyle": {
+              "type": "string",
+              "enum": [
+                "expandedToStatement",
+                "compactToStatement",
+                "expandedToParenthesis",
+                "compactToParenthesis"
+              ],
+              "default": "expandedToStatement"
+            },
+            "indentContents": {
+              "description": "Indent values inside the parentheses.",
+              "type": "boolean",
+              "default": true
+            },
+            "placeSubsequentValuesOnNewLines": {
+              "description": "Whether to place each value tuple on its own line.",
+              "type": "string",
+              "enum": ["always", "never", "ifLongerThanMaxLineLength"],
+              "default": "ifLongerThanMaxLineLength"
+            }
+          }
+        }
+      }
+    },
+
+    "restoreStatements": {
+      "description": "Formatting for RESTORE/BACKUP statements (SQL Server specific).",
+      "type": "object",
+      "properties": {
+        "moveTo": {
+          "description": "MOVE ... TO clause formatting.",
+          "type": "object",
+          "properties": {
+            "placeToOnNewLine": {
+              "description": "Place the TO keyword on a new line.",
+              "type": "boolean",
+              "default": false
+            },
+            "toKeywordAlignment": {
+              "description": "Alignment of the TO keyword.",
+              "type": "string",
+              "enum": ["none", "indented", "toStatement"],
+              "default": "none"
+            }
+          }
+        }
+      }
+    },
+
+    "caseExpressions": {
+      "description": "Formatting for CASE / WHEN / THEN / ELSE / END expressions.",
+      "type": "object",
+      "properties": {
+        "placeExpressionOnNewLine": {
+          "description": "Place the input expression (simple CASE) on a new line after CASE.",
+          "type": "boolean",
+          "default": false
+        },
+        "placeFirstWhenOnNewLine": {
+          "description": "Place the first WHEN on a new line.",
+          "type": "string",
+          "enum": ["always", "never", "ifInputExpression"],
+          "default": "always"
+        },
+        "whenAlignment": {
+          "description": "How WHEN keywords are aligned.",
+          "type": "string",
+          "enum": ["indentedFromCase", "toCase", "toFirstItem"],
+          "default": "indentedFromCase"
+        },
+        "placeThenOnNewLine": {
+          "description": "Place THEN on a new line after the WHEN condition.",
+          "type": "boolean",
+          "default": false
+        },
+        "thenAlignment": {
+          "description": "How THEN is aligned.",
+          "type": "string",
+          "enum": ["indentedFromWhen", "toWhen", "toExpression"],
+          "default": "toWhen"
+        },
+        "placeElseOnNewLine": {
+          "description": "Place ELSE on a new line.",
+          "type": "boolean",
+          "default": true
+        },
+        "alignElseToWhen": {
+          "description": "Align ELSE to the same column as WHEN.",
+          "type": "boolean",
+          "default": true
+        },
+        "placeEndOnNewLine": {
+          "description": "Place END on a new line.",
+          "type": "boolean",
+          "default": true
+        },
+        "endAlignment": {
+          "description": "How END is aligned.",
+          "type": "string",
+          "enum": ["toCase", "toWhen", "rightAlignedToWhen"],
+          "default": "toCase"
+        },
+        "collapseShortCaseExpressions": {
+          "description": "Collapse CASE expressions to one line if short enough.",
+          "type": "boolean",
+          "default": true
+        },
+        "collapseCaseExpressionsShorterThan": {
+          "description": "Character-length threshold for collapsing CASE expressions.",
+          "type": "integer",
+          "minimum": 35,
+          "maximum": 160,
+          "default": 78
+        }
+      }
+    },
+
+    "functionCalls": {
+      "description": "Formatting for function call arguments and parentheses.",
+      "type": "object",
+      "properties": {
+        "placeArgumentsOnNewLines": {
+          "description": "Whether to place function arguments on new lines.",
+          "type": "string",
+          "enum": ["always", "never", "ifLongerThanWrapColumn"],
+          "default": "never"
+        },
+        "addSpacesAroundParentheses": {
+          "description": "Add a space before '(' and after ')' in function calls.",
+          "type": "boolean",
+          "default": false
+        },
+        "addSpacesAroundArgumentList": {
+          "description": "Add a space after '(' and before ')' in function calls.",
+          "type": "boolean",
+          "default": false
+        },
+        "addSpaceBetweenEmptyParentheses": {
+          "description": "Add a space inside empty parentheses: GETDATE( ) vs GETDATE().",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+
+    "operators": {
+      "description": "Formatting for comparison, logical, arithmetic, BETWEEN, and IN operators.",
+      "type": "object",
+      "properties": {
+        "comparison": {
+          "description": "Comparison operator (=, <, >, <=, >=, <>, !=) formatting.",
+          "type": "object",
+          "properties": {
+            "align": {
+              "description": "Vertically align comparison operators across consecutive conditions.",
+              "type": "boolean",
+              "default": false
+            },
+            "addSpacesAroundComparisonOperators": {
+              "description": "Add spaces around comparison operators: a = b vs a=b.",
+              "type": "boolean",
+              "default": true
+            },
+            "addSpacesAroundArithmeticOperators": {
+              "description": "Add spaces around arithmetic operators (+, -, *, /): a + b vs a+b.",
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "andOr": {
+          "description": "AND / OR logical operator formatting.",
+          "type": "object",
+          "properties": {
+            "placeOnNewLine": {
+              "description": "Whether to place AND/OR on a new line.",
+              "type": "string",
+              "enum": ["always", "never", "ifLongerThanWrapColumn"],
+              "default": "always"
+            },
+            "alignment": {
+              "description": "How AND/OR keywords are aligned. 'toStatement': align to the clause keyword. 'rightAligned': right-align to the clause keyword. 'toFirstListItem': align to the first condition. 'indented': indent from the clause.",
+              "type": "string",
+              "enum": ["toStatement", "rightAligned", "toFirstListItem", "indented"],
+              "default": "indented"
+            },
+            "placeBeforeCondition": {
+              "description": "Place AND/OR before the condition (vs. after the previous condition).",
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "between": {
+          "description": "BETWEEN ... AND ... expression formatting.",
+          "type": "object",
+          "properties": {
+            "placeOnNewLine": {
+              "description": "Place the BETWEEN keyword on a new line.",
+              "type": "boolean",
+              "default": false
+            },
+            "placeAndKeywordOnNewLine": {
+              "description": "Place the AND (in BETWEEN x AND y) on a new line.",
+              "type": "boolean",
+              "default": false
+            },
+            "andAlignment": {
+              "description": "How the BETWEEN-AND keyword is aligned.",
+              "type": "string",
+              "enum": ["toBetween", "rightAlignedToBetween", "toBeginning"],
+              "default": "toBetween"
+            }
+          }
+        },
+        "in": {
+          "description": "IN (...) expression formatting.",
+          "type": "object",
+          "properties": {
+            "placeOpeningParenthesisOnNewLine": {
+              "description": "Place the opening '(' of IN on a new line.",
+              "type": "boolean",
+              "default": false
+            },
+            "openingParenthesisAlignment": {
+              "description": "Alignment of the opening parenthesis when on a new line.",
+              "type": "string",
+              "enum": ["toStatement", "indented", "rightAligned"],
+              "default": "indented"
+            },
+            "placeFirstValueOnNewLine": {
+              "description": "Place the first value inside IN on a new line.",
+              "type": "string",
+              "enum": ["always", "never", "ifLongerThanWrapColumn", "ifMoreValues"],
+              "default": "never"
+            },
+            "placeSubsequentValuesOnNewLines": {
+              "description": "Place each subsequent value in IN on its own line.",
+              "type": "string",
+              "enum": ["always", "never", "ifLongerThanWrapColumn"],
+              "default": "never"
+            },
+            "addSpaceAroundInContents": {
+              "description": "Add a space after '(' and before ')' in IN lists.",
+              "type": "boolean",
+              "default": false
+            }
+          }
+        }
+      }
+    }
+
+  }
+}

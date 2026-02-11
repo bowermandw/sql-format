@@ -1,0 +1,937 @@
+import { Token, TokenType } from './tokens';
+import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, ConstraintNode } from './ast';
+import { FormatConfig } from './config';
+import { caseWord, categorizeWord } from './casing';
+
+export function format(ast: BatchNode, config: FormatConfig): string {
+  const f = new Formatter(config);
+  return f.formatBatch(ast);
+}
+
+class Formatter {
+  private config: FormatConfig;
+  private indent: number = 0;
+  private tabStr: string;
+
+  constructor(config: FormatConfig) {
+    this.config = config;
+    this.tabStr = config.whitespace.tabBehavior === 'onlyTabs'
+      ? '\t'
+      : ' '.repeat(config.whitespace.numberOfSpacesInTab);
+  }
+
+  private indentStr(level?: number): string {
+    const lvl = level ?? this.indent;
+    return this.tabStr.repeat(lvl);
+  }
+
+  private kw(word: string): string {
+    return caseWord(word, this.config.casing);
+  }
+
+  private tokenValue(token: Token): string {
+    if (token.type === TokenType.Word) {
+      return caseWord(token.value, this.config.casing);
+    }
+    return token.value;
+  }
+
+  /** Build the semicolon suffix string based on whitespaceBeforeSemicolon config. */
+  private semicolonStr(): string {
+    switch (this.config.whitespace.whitespaceBeforeSemicolon) {
+      case 'spaceBefore': return ' ;';
+      case 'newLineBefore': return '\n' + this.indentStr() + ';';
+      default: return ';';
+    }
+  }
+
+  /**
+   * Append a semicolon to the end of a formatted statement string
+   * if insertSemicolons === 'insert'. Handles multi-line strings by
+   * appending to the last line.
+   */
+  private withSemicolon(formatted: string): string {
+    if (this.config.whitespace.insertSemicolons !== 'insert') return formatted;
+    return formatted + this.semicolonStr();
+  }
+
+  private padToWidth(s: string, width: number): string {
+    const padding = width - s.length;
+    return padding > 0 ? s + ' '.repeat(padding) : s;
+  }
+
+  /**
+   * Returns true if a node type is a "leaf statement" that should receive
+   * a trailing semicolon (as opposed to compound/container statements).
+   */
+  private isLeafStatement(node: SqlNode): boolean {
+    switch (node.type) {
+      case 'select':
+      case 'insert':
+      case 'update':
+      case 'delete':
+      case 'set':
+      case 'declare':
+      case 'print':
+      case 'return':
+      case 'rawToken':
+      case 'dropTable':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Format a statement and append a semicolon if it's a leaf statement
+   * and insertSemicolons is 'insert'.
+   */
+  private formatStatement(node: SqlNode): string {
+    const formatted = this.formatNode(node);
+    if (this.isLeafStatement(node)) {
+      return this.withSemicolon(formatted);
+    }
+    return formatted;
+  }
+
+  // --- Batch ---
+
+  formatBatch(node: BatchNode): string {
+    const parts: string[] = [];
+    for (const batch of node.batches) {
+      const stmts = batch.statements
+        .map(s => this.formatStatement(s))
+        .filter(s => s.length > 0);
+      parts.push(stmts.join('\n'));
+      if (batch.separator) {
+        parts.push(this.kw('GO'));
+      }
+    }
+    return parts.join('\n') + '\n';
+  }
+
+  // --- Node dispatch ---
+
+  formatNode(node: SqlNode, indent?: number): string {
+    if (indent !== undefined) {
+      const prev = this.indent;
+      this.indent = indent;
+      const result = this.formatNodeInner(node);
+      this.indent = prev;
+      return result;
+    }
+    return this.formatNodeInner(node);
+  }
+
+  private formatNodeInner(node: SqlNode): string {
+    switch (node.type) {
+      case 'batch': return this.formatBatch(node);
+      case 'createProcedure': return this.formatCreateProcedure(node);
+      case 'createTable': return this.formatCreateTable(node);
+      case 'dropTable': return this.formatDropTable(node);
+      case 'select': return this.formatSelect(node);
+      case 'insert': return this.formatInsert(node);
+      case 'update': return this.formatUpdate(node);
+      case 'delete': return this.formatDelete(node);
+      case 'cte': return this.formatCTE(node);
+      case 'beginEnd': return this.formatBeginEnd(node);
+      case 'ifElse': return this.formatIfElse(node);
+      case 'declare': return this.formatDeclare(node);
+      case 'set': return this.formatSet(node);
+      case 'print': return this.formatPrint(node);
+      case 'return': return this.formatReturn(node);
+      case 'case': return this.formatCase(node);
+      case 'expression': return this.formatExpression(node);
+      case 'functionCall': return this.formatFunctionCall(node);
+      case 'identifier': return this.formatIdentifier(node);
+      case 'literal': return this.formatLiteral(node);
+      case 'inExpression': return this.formatInExpression(node);
+      case 'between': return this.formatBetween(node);
+      case 'exists': return this.formatExists(node);
+      case 'parenGroup': return this.formatParenGroup(node);
+      case 'where': return this.formatWhere(node);
+      case 'groupBy': return this.formatGroupBy(node);
+      case 'orderBy': return this.formatOrderBy(node);
+      case 'having': return this.formatHaving(node);
+      case 'join': return this.formatJoin(node);
+      case 'rawToken': return this.tokenValue(node.token);
+      case 'columnDef': return this.formatColumnDef(node);
+      case 'constraint': return this.formatConstraint(node);
+      default: return '';
+    }
+  }
+
+  // --- CREATE PROCEDURE ---
+
+  private formatCreateProcedure(node: CreateProcedureNode): string {
+    const parts: string[] = [];
+    const kwStr = node.keywords.map(t => this.kw(t.value)).join(' ');
+    const nameStr = this.formatNode(node.name);
+
+    // Parameters
+    if (node.parameters.length === 0) {
+      parts.push(`${kwStr} ${nameStr}`);
+    } else {
+      let nameWidth = 0;
+      if (this.config.ddl.alignDataTypesAndConstraints && node.parameters.length > 1) {
+        nameWidth = Math.max(...node.parameters.map(p => p.name.value.length));
+      }
+      const paramLines = node.parameters.map(p => this.formatProcParam(p, nameWidth));
+
+      // Check if first param should go on new line
+      const placeFirst = this.config.ddl.placeFirstProcedureParameterOnNewLine;
+      if (placeFirst === 'always' || (placeFirst === 'ifSeveralItems' && node.parameters.length > 1)) {
+        parts.push(`${kwStr} ${nameStr}`);
+        parts.push('(');
+        const indent = this.indentStr(1);
+        parts.push(paramLines.map(p => indent + p).join(',\n'));
+        parts.push(')');
+      } else {
+        // All on one line
+        parts.push(`${kwStr} ${nameStr} (${paramLines.join(', ')})`);
+      }
+    }
+
+    parts.push(this.kw('AS'));
+
+    // Body
+    parts.push(this.formatNode(node.body));
+
+    return parts.join('\n');
+  }
+
+  private formatProcParam(param: { name: Token; dataType: SqlNode; default?: SqlNode; output?: Token }, nameWidth: number = 0): string {
+    const name = nameWidth > 0 ? this.padToWidth(param.name.value, nameWidth) : param.name.value;
+    let s = `${name} ${this.formatDataType(param.dataType)}`;
+    if (param.default) {
+      s += ` = ${this.formatNode(param.default)}`;
+    }
+    if (param.output) {
+      s += ` ${this.kw(param.output.value)}`;
+    }
+    return s;
+  }
+
+  // --- CREATE TABLE ---
+
+  private formatCreateTable(node: CreateTableNode): string {
+    const kw = node.keywords.map(t => this.kw(t.value)).join(' ');
+    const name = this.formatNode(node.name);
+    const parts: string[] = [`${kw} ${name}`];
+    parts.push('(');
+    const indent = this.indentStr(1);
+    let nameWidth = 0;
+    if (this.config.ddl.alignDataTypesAndConstraints && node.columns.length > 1) {
+      nameWidth = Math.max(...node.columns.map(c => {
+        if (c.type === 'columnDef') {
+          return this.tokenValue((c as ColumnDefNode).name).length;
+        }
+        return 0;
+      }));
+    }
+    const colStrs = node.columns.map(c => indent + this.formatColumnDef(c as ColumnDefNode, nameWidth));
+    parts.push(colStrs.join(',\n'));
+    parts.push(')');
+    if (node.onFilegroup && node.onFilegroup.length > 0) {
+      parts.push(node.onFilegroup.map(t => this.kw(t.value)).join(' '));
+    }
+    return parts.join('\n');
+  }
+
+  private formatColumnDef(node: ColumnDefNode, nameWidth: number = 0): string {
+    const colName = this.tokenValue(node.name);
+    const name = nameWidth > 0 ? this.padToWidth(colName, nameWidth) : colName;
+    let s = `${name} ${this.formatDataType(node.dataType)}`;
+    for (const c of node.constraints) {
+      s += ' ' + this.formatNode(c);
+    }
+    return s;
+  }
+
+  // --- DROP TABLE ---
+
+  private formatDropTable(node: DropTableNode): string {
+    const kw = node.keywords.map(t => this.kw(t.value)).join(' ');
+    const name = this.formatNode(node.name);
+    return `${kw} ${name}`;
+  }
+
+  // --- CONSTRAINT ---
+
+  private formatConstraint(node: ConstraintNode): string {
+    return node.tokens.map(t => this.kw(t.value)).join(' ');
+  }
+
+  // --- SELECT ---
+
+  private formatSelect(node: SelectNode): string {
+    const lines: string[] = [];
+    const baseIndent = this.indent;
+    const indent = this.indentStr(baseIndent);
+    const clauseIndent = this.indentStr(baseIndent + 1);
+
+    // Try collapse
+    if (this.config.dml.collapseShortStatements) {
+      const collapsed = this.collapseSelect(node);
+      if (collapsed.length <= this.config.dml.collapseStatementsShorterThan) {
+        return indent + collapsed;
+      }
+    }
+
+    // SELECT keyword
+    let selectLine = indent + this.kw('SELECT');
+    if (node.distinct) selectLine += ' ' + this.kw('DISTINCT');
+    if (node.top) {
+      selectLine += ' ' + this.kw('TOP') + ' (' + this.formatNode(node.top.value) + ')';
+    }
+
+    // Column list
+    const firstOnNewLine = this.config.lists.placeFirstItemOnNewLine;
+    const cols = node.columns.map(c => this.formatSelectItem(c));
+
+    const leadingCommas = this.config.lists.commas.placeCommasBeforeItems;
+
+    if (firstOnNewLine === 'always' || (firstOnNewLine === 'onlyIfSubsequentItems' && cols.length > 1)) {
+      lines.push(selectLine);
+      for (let i = 0; i < cols.length; i++) {
+        if (leadingCommas && i > 0) {
+          lines.push(clauseIndent.slice(0, -1) + ',' + cols[i]);
+        } else {
+          lines.push(clauseIndent + cols[i] + (!leadingCommas && i < cols.length - 1 ? ',' : ''));
+        }
+      }
+    } else {
+      // First item on same line as SELECT
+      if (cols.length === 1) {
+        lines.push(selectLine + ' ' + cols[0]);
+      } else {
+        if (leadingCommas) {
+          lines.push(selectLine + ' ' + cols[0]);
+          for (let i = 1; i < cols.length; i++) {
+            lines.push(clauseIndent.slice(0, -1) + ',' + cols[i]);
+          }
+        } else {
+          lines.push(selectLine + ' ' + cols[0] + ',');
+          for (let i = 1; i < cols.length; i++) {
+            lines.push(clauseIndent + cols[i] + (i < cols.length - 1 ? ',' : ''));
+          }
+        }
+      }
+    }
+
+    // FROM
+    if (node.from) {
+      lines.push(indent + this.kw('FROM'));
+      lines.push(clauseIndent + this.formatNode(node.from.source));
+      for (const join of node.from.joins) {
+        lines.push(this.formatJoin(join, baseIndent));
+      }
+    }
+
+    // WHERE
+    if (node.where) {
+      lines.push(this.formatWhere(node.where, baseIndent));
+    }
+
+    // GROUP BY
+    if (node.groupBy) {
+      lines.push(this.formatGroupBy(node.groupBy, baseIndent));
+    }
+
+    // HAVING
+    if (node.having) {
+      lines.push(this.formatHaving(node.having, baseIndent));
+    }
+
+    // ORDER BY
+    if (node.orderBy) {
+      lines.push(this.formatOrderBy(node.orderBy, baseIndent));
+    }
+
+    return lines.join('\n');
+  }
+
+  private collapseSelect(node: SelectNode): string {
+    let s = this.kw('SELECT');
+    if (node.distinct) s += ' ' + this.kw('DISTINCT');
+    if (node.top) s += ' ' + this.kw('TOP') + '(' + this.formatNode(node.top.value) + ')';
+    s += ' ' + node.columns.map(c => this.formatSelectItem(c)).join(', ');
+    if (node.from) {
+      s += ' ' + this.kw('FROM') + ' ' + this.formatNode(node.from.source);
+      for (const j of node.from.joins) {
+        s += ' ' + this.collapseJoin(j);
+      }
+    }
+    if (node.where) s += ' ' + this.kw('WHERE') + ' ' + this.formatNode(node.where.condition);
+    if (node.groupBy) s += ' ' + this.kw('GROUP') + ' ' + this.kw('BY') + ' ' + node.groupBy.items.map(i => this.formatNode(i)).join(', ');
+    if (node.having) s += ' ' + this.kw('HAVING') + ' ' + this.formatNode(node.having.condition);
+    if (node.orderBy) s += ' ' + this.kw('ORDER') + ' ' + this.kw('BY') + ' ' + node.orderBy.items.map(i => this.formatNode(i.expr) + (i.direction ? ' ' + this.kw(i.direction.value) : '')).join(', ');
+    return s;
+  }
+
+  private formatSelectItem(node: SqlNode): string {
+    const aliased = node as any;
+    if (aliased._expression) {
+      let s = this.formatNode(aliased._expression);
+      if (aliased.alias) {
+        if (aliased.alias.asToken) {
+          s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(aliased.alias.name);
+        } else {
+          s += ' ' + this.formatIdentifierPart(aliased.alias.name);
+        }
+      }
+      return s;
+    }
+    return this.formatNode(node);
+  }
+
+  // --- FROM / JOIN ---
+
+  private formatJoin(node: JoinNode, baseIndent?: number): string {
+    const bi = baseIndent ?? this.indent;
+    const indent = this.indentStr(bi);
+    const joinKw = node.joinKeywords.map(t => this.kw(t.value)).join(' ');
+    const table = this.formatNode(node.table);
+    let line = indent + joinKw + ' ' + table;
+    if (node.on) {
+      const onIndent = this.indentStr(bi + 1);
+      line += '\n' + onIndent + this.kw('ON') + ' ' + this.formatNode(node.on.condition);
+    }
+    return line;
+  }
+
+  private collapseJoin(node: JoinNode): string {
+    const joinKw = node.joinKeywords.map(t => this.kw(t.value)).join(' ');
+    const table = this.formatNode(node.table);
+    let s = joinKw + ' ' + table;
+    if (node.on) s += ' ' + this.kw('ON') + ' ' + this.formatNode(node.on.condition);
+    return s;
+  }
+
+  // --- WHERE ---
+
+  formatWhere(node: WhereNode, baseIndent?: number): string {
+    const bi = baseIndent ?? this.indent;
+    const indent = this.indentStr(bi);
+    const clauseIndent = this.indentStr(bi + 1);
+
+    // Format condition with AND/OR handling
+    const condStr = this.formatCondition(node.condition, bi + 1);
+    return indent + this.kw('WHERE') + '\n' + clauseIndent + condStr;
+  }
+
+  private formatCondition(node: SqlNode, indentLevel: number): string {
+    if (node.type === 'expression') {
+      const expr = node as ExpressionNode;
+      const opUpper = expr.operator.value.toUpperCase();
+      if (opUpper === 'AND' || opUpper === 'OR') {
+        const left = this.formatCondition(expr.left, indentLevel);
+        const right = this.formatCondition(expr.right, indentLevel);
+        const indent = this.indentStr(indentLevel);
+        return left + '\n' + indent + this.kw(opUpper) + ' ' + right;
+      }
+    }
+    return this.formatNode(node);
+  }
+
+  // --- GROUP BY ---
+
+  formatGroupBy(node: GroupByNode, baseIndent?: number): string {
+    const bi = baseIndent ?? this.indent;
+    const indent = this.indentStr(bi);
+    const clauseIndent = this.indentStr(bi + 1);
+    const items = node.items.map(i => this.formatNode(i));
+    return indent + this.kw('GROUP') + ' ' + this.kw('BY') + '\n' +
+      items.map(i => clauseIndent + i).join(',\n');
+  }
+
+  // --- ORDER BY ---
+
+  formatOrderBy(node: OrderByNode, baseIndent?: number): string {
+    const bi = baseIndent ?? this.indent;
+    const indent = this.indentStr(bi);
+    const clauseIndent = this.indentStr(bi + 1);
+    const items = node.items.map(i => {
+      let s = this.formatNode(i.expr);
+      if (i.direction) s += ' ' + this.kw(i.direction.value);
+      return s;
+    });
+    return indent + this.kw('ORDER') + ' ' + this.kw('BY') + '\n' +
+      items.map(i => clauseIndent + i).join(',\n');
+  }
+
+  // --- HAVING ---
+
+  formatHaving(node: HavingNode, baseIndent?: number): string {
+    const bi = baseIndent ?? this.indent;
+    const indent = this.indentStr(bi);
+    const clauseIndent = this.indentStr(bi + 1);
+    return indent + this.kw('HAVING') + '\n' + clauseIndent + this.formatNode(node.condition);
+  }
+
+  // --- INSERT ---
+
+  private formatInsert(node: InsertNode): string {
+    const indent = this.indentStr();
+    const clauseIndent = this.indentStr(this.indent + 1);
+    const lines: string[] = [];
+
+    let insertLine = indent + this.kw('INSERT');
+    if (node.intoToken) insertLine += ' ' + this.kw('INTO');
+    insertLine += ' ' + this.formatNode(node.target);
+    lines.push(insertLine);
+
+    if (node.columns) {
+      lines.push(indent + '(');
+      lines.push(node.columns.map(c => clauseIndent + this.formatNode(c)).join(',\n'));
+      lines.push(indent + ')');
+    }
+
+    if (node.values) {
+      lines.push(indent + this.kw('VALUES'));
+      for (const row of node.values.rows) {
+        lines.push(indent + '(' + row.map(v => this.formatNode(v)).join(', ') + ')');
+      }
+    }
+
+    if (node.select) {
+      lines.push(this.formatSelect(node.select));
+    }
+
+    return lines.join('\n');
+  }
+
+  // --- UPDATE ---
+
+  private formatUpdate(node: UpdateNode): string {
+    const indent = this.indentStr();
+    const clauseIndent = this.indentStr(this.indent + 1);
+    const lines: string[] = [];
+
+    lines.push(indent + this.kw('UPDATE') + ' ' + this.formatNode(node.target));
+    lines.push(indent + this.kw('SET'));
+    for (let i = 0; i < node.assignments.length; i++) {
+      const a = node.assignments[i];
+      const comma = i < node.assignments.length - 1 ? ',' : '';
+      lines.push(clauseIndent + this.formatNode(a.column) + ' = ' + this.formatNode(a.value) + comma);
+    }
+
+    if (node.from) {
+      lines.push(indent + this.kw('FROM') + ' ' + this.formatNode(node.from.source));
+    }
+    if (node.where) {
+      lines.push(this.formatWhere(node.where));
+    }
+
+    return lines.join('\n');
+  }
+
+  // --- DELETE ---
+
+  private formatDelete(node: DeleteNode): string {
+    const indent = this.indentStr();
+    let s = indent + this.kw('DELETE');
+    if (node.fromToken) s += ' ' + this.kw('FROM');
+    s += ' ' + this.formatNode(node.target);
+    if (node.where) {
+      s += '\n' + this.formatWhere(node.where);
+    }
+    return s;
+  }
+
+  // --- CTE ---
+
+  private formatCTE(node: CteNode): string {
+    const indent = this.indentStr();
+    const lines: string[] = [];
+
+    for (let i = 0; i < node.ctes.length; i++) {
+      const cte = node.ctes[i];
+      const prefix = i === 0 ? this.kw('WITH') + ' ' : indent + '    ';
+      let cteLine = prefix + this.tokenValue(cte.name);
+      if (cte.columns) {
+        cteLine += ' (' + cte.columns.map(c => this.tokenValue(c)).join(', ') + ')';
+      }
+      cteLine += ' ' + this.kw('AS');
+      lines.push(indent + cteLine);
+      lines.push(indent + '(');
+
+      this.indent++;
+      lines.push(this.formatNode(cte.query));
+      this.indent--;
+
+      lines.push(indent + ')' + (i < node.ctes.length - 1 ? ',' : ''));
+    }
+
+    lines.push(this.formatNode(node.statement));
+    return lines.join('\n');
+  }
+
+  // --- BEGIN/END ---
+
+  private formatBeginEnd(node: BeginEndNode): string {
+    const indent = this.indentStr();
+    const lines: string[] = [];
+    lines.push(indent + this.kw('BEGIN'));
+
+    this.indent++;
+    for (const stmt of node.statements) {
+      lines.push(this.formatStatement(stmt));
+    }
+    this.indent--;
+
+    lines.push(indent + this.kw('END'));
+    return lines.join('\n');
+  }
+
+  // --- IF/ELSE ---
+
+  private formatIfElse(node: IfElseNode): string {
+    const indent = this.indentStr();
+    const lines: string[] = [];
+    const kwName = node.ifToken.value.toUpperCase() === 'WHILE' ? 'WHILE' : 'IF';
+
+    // Try collapse
+    if (this.config.controlFlow.collapseShortStatements) {
+      const collapsed = this.collapseIfElse(node, kwName);
+      if (collapsed.length <= this.config.controlFlow.collapseStatementsShorterThan) {
+        return indent + collapsed;
+      }
+    }
+
+    lines.push(indent + this.kw(kwName) + ' ' + this.formatNode(node.condition));
+
+    if (node.thenStatement.type === 'beginEnd') {
+      lines.push(this.formatNode(node.thenStatement));
+    } else {
+      this.indent++;
+      lines.push(this.formatStatement(node.thenStatement));
+      this.indent--;
+    }
+
+    if (node.elseClause) {
+      lines.push(indent + this.kw('ELSE'));
+      if (node.elseClause.statement.type === 'beginEnd') {
+        lines.push(this.formatNode(node.elseClause.statement));
+      } else if (node.elseClause.statement.type === 'ifElse') {
+        // ELSE IF on same line
+        lines[lines.length - 1] = indent + this.kw('ELSE') + ' ' + this.formatStatement(node.elseClause.statement).trimStart();
+      } else {
+        this.indent++;
+        lines.push(this.formatStatement(node.elseClause.statement));
+        this.indent--;
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  private collapseIfElse(node: IfElseNode, kwName: string): string {
+    let s = this.kw(kwName) + ' ' + this.formatNode(node.condition) + ' ' + this.formatStatement(node.thenStatement).trim();
+    if (node.elseClause) {
+      s += ' ' + this.kw('ELSE') + ' ' + this.formatStatement(node.elseClause.statement).trim();
+    }
+    return s;
+  }
+
+  // --- DECLARE ---
+
+  private formatDeclare(node: DeclareNode): string {
+    const indent = this.indentStr();
+    let nameWidth = 0;
+    if (this.config.variables.alignDataTypesAndValues && node.variables.length > 1) {
+      nameWidth = Math.max(...node.variables.map(v => v.name.value.length));
+    }
+    const vars = node.variables.map(v => {
+      const name = nameWidth > 0 ? this.padToWidth(v.name.value, nameWidth) : v.name.value;
+      let s = name + ' ' + this.formatDataType(v.dataType);
+      if (v.default) s += ' = ' + this.formatNode(v.default);
+      return s;
+    });
+
+    if (vars.length === 1) {
+      return indent + this.kw('DECLARE') + ' ' + vars[0];
+    }
+
+    return indent + this.kw('DECLARE') + '\n' +
+      vars.map(v => this.indentStr(this.indent + 1) + v).join(',\n');
+  }
+
+  // --- SET ---
+
+  private formatSet(node: SetNode): string {
+    const indent = this.indentStr();
+    if (node.isSpecial) {
+      return indent + this.kw('SET') + ' ' + this.formatNode(node.target) + ' ' + this.formatNode(node.value);
+    }
+    return indent + this.kw('SET') + ' ' + this.formatNode(node.target) + ' = ' + this.formatNode(node.value);
+  }
+
+  // --- PRINT ---
+
+  private formatPrint(node: PrintNode): string {
+    const indent = this.indentStr();
+    return indent + this.kw('PRINT') + ' ' + this.formatNode(node.expression);
+  }
+
+  // --- RETURN ---
+
+  private formatReturn(node: ReturnNode): string {
+    const indent = this.indentStr();
+    if (node.expression) {
+      return indent + this.kw('RETURN') + ' ' + this.formatNode(node.expression);
+    }
+    return indent + this.kw('RETURN');
+  }
+
+  // --- CASE ---
+
+  private formatCase(node: CaseNode): string {
+    // Try collapse
+    if (this.config.caseExpressions.collapseShortCaseExpressions) {
+      const collapsed = this.collapseCase(node);
+      if (collapsed.length <= this.config.caseExpressions.collapseCaseExpressionsShorterThan) {
+        return collapsed;
+      }
+    }
+
+    const parts: string[] = [];
+    let caseLine = this.kw('CASE');
+    if (node.inputExpr) caseLine += ' ' + this.formatNode(node.inputExpr);
+    parts.push(caseLine);
+
+    const whenIndent = this.indentStr(this.indent + 1);
+    for (const wc of node.whenClauses) {
+      let whenLine = whenIndent + this.kw('WHEN') + ' ' + this.formatNode(wc.condition);
+      if (this.config.caseExpressions.placeThenOnNewLine) {
+        parts.push(whenLine);
+        parts.push(whenIndent + '    ' + this.kw('THEN') + ' ' + this.formatNode(wc.result));
+      } else {
+        whenLine += ' ' + this.kw('THEN') + ' ' + this.formatNode(wc.result);
+        parts.push(whenLine);
+      }
+    }
+
+    if (node.elseClause) {
+      parts.push(whenIndent + this.kw('ELSE') + ' ' + this.formatNode(node.elseClause.result));
+    }
+
+    parts.push(this.indentStr() + this.kw('END'));
+    return parts.join('\n');
+  }
+
+  private collapseCase(node: CaseNode): string {
+    let s = this.kw('CASE');
+    if (node.inputExpr) s += ' ' + this.formatNode(node.inputExpr);
+    for (const wc of node.whenClauses) {
+      s += ' ' + this.kw('WHEN') + ' ' + this.formatNode(wc.condition) + ' ' + this.kw('THEN') + ' ' + this.formatNode(wc.result);
+    }
+    if (node.elseClause) s += ' ' + this.kw('ELSE') + ' ' + this.formatNode(node.elseClause.result);
+    s += ' ' + this.kw('END');
+    return s;
+  }
+
+  // --- Expressions ---
+
+  private formatExpression(node: ExpressionNode): string {
+    const left = this.formatNode(node.left);
+    const right = this.formatNode(node.right);
+    const op = this.tokenValue(node.operator);
+
+    // Handle unary (empty left)
+    if (left === '') return op + right;
+
+    const opUpper = node.operator.value.toUpperCase();
+
+    // Special: IS, IS NOT, LIKE, NOT LIKE
+    if (opUpper === 'IS' || opUpper === 'IS NOT' || opUpper === 'LIKE' || opUpper.startsWith('NOT ')) {
+      return `${left} ${this.kw(opUpper)} ${right}`;
+    }
+
+    // Comparison and arithmetic operators — add spaces around them
+    if (this.config.operators.comparison.addSpacesAroundComparisonOperators &&
+        ['=', '<', '>', '<=', '>=', '<>', '!='].includes(node.operator.value)) {
+      return `${left} ${op} ${right}`;
+    }
+    if (this.config.operators.comparison.addSpacesAroundArithmeticOperators &&
+        ['+', '-', '*', '/', '%'].includes(node.operator.value)) {
+      return `${left} ${op} ${right}`;
+    }
+
+    // AND/OR at top level
+    if (opUpper === 'AND' || opUpper === 'OR') {
+      return `${left} ${this.kw(opUpper)} ${right}`;
+    }
+
+    return `${left} ${op} ${right}`;
+  }
+
+  // --- Function calls ---
+
+  private formatFunctionCall(node: FunctionCallNode): string {
+    const name = this.formatNode(node.name);
+    const args = node.args.map(a => this.formatNode(a)).join(', ');
+    return `${name}(${args})`;
+  }
+
+  // --- Data types ---
+
+  /**
+   * Format a data type node (e.g. INT, VARCHAR(50)), applying bracket
+   * enclosure per the dataTypes.encloseDataTypes config.
+   */
+  private formatDataType(node: SqlNode): string {
+    const mode = this.config.dataTypes.encloseDataTypes;
+    const formatted = this.formatNode(node);
+
+    if (mode === 'asis') return formatted;
+
+    if (mode === 'withBrackets') {
+      // VARCHAR(50) → [VARCHAR](50), INT → [INT]
+      // The formatted string is either "TYPE" or "TYPE(args)"
+      const parenIdx = formatted.indexOf('(');
+      if (parenIdx > 0) {
+        const typeName = formatted.slice(0, parenIdx);
+        const rest = formatted.slice(parenIdx);
+        return '[' + typeName + ']' + rest;
+      }
+      return '[' + formatted + ']';
+    }
+
+    if (mode === 'withoutBrackets') {
+      // [VARCHAR](50) → VARCHAR(50), [INT] → INT
+      return formatted.replace(/\[([^\]]+)\]/g, '$1');
+    }
+
+    return formatted;
+  }
+
+  // --- Identifiers ---
+
+  private formatIdentifier(node: IdentifierNode): string {
+    let s = node.parts.map(p => this.formatIdentifierPart(p)).join('.');
+    if (node.alias) {
+      if (node.alias.asToken) {
+        s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(node.alias.name);
+      } else {
+        s += ' ' + this.formatIdentifierPart(node.alias.name);
+      }
+    }
+    return s;
+  }
+
+  /**
+   * Format a single identifier part (table name, column name, alias, schema),
+   * applying bracket enclosure rules. This is only called for tokens that
+   * appear in identifier positions (IdentifierNode parts), never for
+   * standalone SQL keywords.
+   */
+  private formatIdentifierPart(token: Token): string {
+    const idConfig = this.config.identifiers;
+    const mode = idConfig.encloseIdentifiers;
+
+    // Already-quoted identifier: [name] or "name"
+    if (token.type === TokenType.QuotedIdentifier) {
+      const inner = stripQuoting(token.value);
+      if (mode === 'withoutBrackets') {
+        // Strip brackets, but keep them on reserved words if configured
+        if (idConfig.alwaysBracketReservedWordIdentifiers && isReservedWord(inner)) {
+          return '[' + inner + ']';
+        }
+        return inner;
+      }
+      if (mode === 'withBrackets') {
+        // Normalize double-quotes to brackets
+        return '[' + inner + ']';
+      }
+      return token.value; // asis
+    }
+
+    // Regular word token in an identifier position
+    if (token.type === TokenType.Word) {
+      // Skip @variables and wildcards
+      if (token.value.startsWith('@') || token.value === '*') {
+        return caseWord(token.value, this.config.casing);
+      }
+
+      const cased = caseWord(token.value, this.config.casing);
+
+      if (mode === 'withBrackets') {
+        const category = categorizeWord(token.value);
+        // Only bracket user-defined identifiers (not keywords, functions, data types)
+        if (category === 'identifier') {
+          return '[' + cased + ']';
+        }
+      }
+
+      if (mode === 'withoutBrackets') {
+        return cased; // already unbracketed
+      }
+
+      return cased; // asis
+    }
+
+    return token.value;
+  }
+
+  // --- Literals ---
+
+  private formatLiteral(node: LiteralNode): string {
+    // Apply casing to keyword-like literals (NULL, DEFAULT, etc.)
+    if (node.token.type === TokenType.Word) {
+      return this.tokenValue(node.token);
+    }
+    return node.token.value;
+  }
+
+  // --- IN expression ---
+
+  private formatInExpression(node: InExpressionNode): string {
+    const expr = this.formatNode(node.expression);
+    const notStr = node.notToken ? this.kw('NOT') + ' ' : '';
+    const values = node.values.map(v => this.formatNode(v)).join(', ');
+    const space = this.config.operators.in.addSpaceAroundInContents ? ' ' : '';
+    return `${expr} ${notStr}${this.kw('IN')} (${space}${values}${space})`;
+  }
+
+  // --- BETWEEN ---
+
+  private formatBetween(node: BetweenNode): string {
+    const expr = this.formatNode(node.expression);
+    const notStr = node.notToken ? this.kw('NOT') + ' ' : '';
+    const low = this.formatNode(node.low);
+    const high = this.formatNode(node.high);
+    return `${expr} ${notStr}${this.kw('BETWEEN')} ${low} ${this.kw('AND')} ${high}`;
+  }
+
+  // --- EXISTS ---
+
+  private formatExists(node: ExistsNode): string {
+    const notStr = node.notToken ? this.kw('NOT') + ' ' : '';
+    const subquery = this.formatNode(node.subquery);
+    return `${notStr}${this.kw('EXISTS')} (${subquery})`;
+  }
+
+  // --- Paren group ---
+
+  private formatParenGroup(node: ParenGroupNode): string {
+    const inner = node.inner.map(n => this.formatNode(n)).join(', ');
+    return `(${inner})`;
+  }
+}
+
+/** Strip [brackets] or "double quotes" from a quoted identifier, returning the inner name. */
+function stripQuoting(value: string): string {
+  if (value.startsWith('[') && value.endsWith(']')) {
+    return value.slice(1, -1);
+  }
+  if (value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+/** Check if a word is a SQL reserved word (used for alwaysBracketReservedWordIdentifiers). */
+function isReservedWord(word: string): boolean {
+  return categorizeWord(word) !== 'identifier';
+}

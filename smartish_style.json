@@ -1,0 +1,91 @@
+{
+  "metadata": {
+    "id": "468d40ee-f861-4e12-a7ed-fbed82d38210",
+    "name": "Smartish by Wacht"
+  },
+  "whitespace": {
+    "newLines": {
+      "emptyLinesAfterBatchSeparator": 1,
+      "emptyLinesBetweenStatements": 1,
+      "preserveExistingEmptyLinesAfterBatchSeparator": false
+    },
+    "wrapLongLines": true,
+    "wrapLinesLongerThan": 120
+  },
+  "lists": {
+    "alignItemsAcrossClauses": false,
+    "alignAliases": false,
+    "alignComments": true,
+    "placeCommasBeforeItems": true,
+    "alignSubsequentItemsWithFirstItem": true,
+    "placeSubsequentItemsOnNewLines": "always",
+    "placeFirstItemOnNewLine": "never"
+  },
+  "parentheses": {
+    "parenthesisStyle": "compactToStatement",
+    "indentParenthesesContents": true,
+    "collapseParenthesesShorterThan": 75,
+    "collapseShortParenthesisContents": true
+  },
+  "casing": {
+    "reservedKeywords": "lowercase",
+    "builtInFunctions": "lowercase",
+    "builtInDataTypes": "lowercase",
+    "globalVariables": "lowercase",
+    "useObjectDefinitionCase": true
+  },
+  "dml": {
+    "addNewLineAfterDistinctAndTopClauses": true,
+    "collapseStatementsShorterThan": 75,
+    "collapseShortSubqueries": true,
+    "collapseSubqueriesShorterThan": 75,
+    "collapseShortStatements": false
+  },
+  "ddl": {
+    "parenthesisStyle": "compactToStatement",
+    "indentParenthesesContents": true,
+    "placeConstraintsOnNewLines": true,
+    "placeConstraintColumnsOnNewLines": "ifLongerOrMultipleColumns",
+    "collapseShortStatements": true,
+    "collapseStatementsShorterThan": 75
+  },
+  "controlFlow": {
+    "collapseStatementsShorterThan": 78
+  },
+  "variables": {
+    "alignDataTypesAndValues": true,
+    "placeEqualsSignOnNewLine": true,
+    "placeAssignedValueOnNewLineIfLongerThanMaxLineLength": true
+  },
+  "joinStatements": {
+    "join": {
+      "keywordAlignment": "indented",
+      "indentJoinTable": false,
+      "placeJoinTableOnNewLine": false,
+      "placeOnNewLine": true
+    },
+    "on": {
+      "keywordAlignment": "indented",
+      "placeOnNewLine": false,
+      "placeConditionOnNewLine": false      
+    }
+  },
+  "insertStatements": {
+    "values": {
+      "indentContents": true
+    }
+  },
+  "caseExpressions": {
+    "collapseCaseExpressionsShorterThan": 75
+  },
+  "operators": {
+    "andOr": {
+      "alignment": "toFirstListItem"
+    },
+    "in": {
+      "placeFirstValueOnNewLine": "never",
+      "placeSubsequentValuesOnNewLines": "never",
+      "addSpaceAroundInContents": true
+    }
+  }
+}
