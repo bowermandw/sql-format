@@ -310,9 +310,15 @@ function isLineEnd(input: string, pos: number): boolean {
 export function attachComments(tokens: Token[]): Token[] {
   const result: Token[] = [];
   const pendingComments: Token[] = [];
+  let sawBlankLine = false;
 
   for (const tok of tokens) {
     if (tok.type === TokenType.Whitespace) {
+      // Detect blank lines: two or more newlines in whitespace
+      const newlineCount = (tok.value.match(/\n/g) || []).length;
+      if (newlineCount >= 2) {
+        sawBlankLine = true;
+      }
       continue;
     }
     if (tok.type === TokenType.LineComment || tok.type === TokenType.BlockComment) {
@@ -330,6 +336,10 @@ export function attachComments(tokens: Token[]): Token[] {
     if (pendingComments.length > 0) {
       tok.leadingComments = [...pendingComments];
       pendingComments.length = 0;
+    }
+    if (sawBlankLine) {
+      tok.precedingBlankLine = true;
+      sawBlankLine = false;
     }
     result.push(tok);
   }

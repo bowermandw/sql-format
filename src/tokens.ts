@@ -39,4 +39,6 @@ export interface Token {
   leadingComments?: Token[];
   /** Trailing inline comment on same line */
   trailingComment?: Token;
+  /** Whether a blank line preceded this token in the original source */
+  precedingBlankLine?: boolean;
 }

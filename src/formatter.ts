@@ -113,6 +113,12 @@ class Formatter {
     }
   }
 
+  /** Check if a node had a blank line before it in the original source. */
+  private hasPrecedingBlankLine(node: SqlNode): boolean {
+    const token = this.getFirstToken(node);
+    return !!token?.precedingBlankLine;
+  }
+
   /** Format leading comments for a node, using the current indentation. */
   private formatLeadingComments(node: SqlNode): string {
     const token = this.getFirstToken(node);
@@ -139,12 +145,20 @@ class Formatter {
   // --- Batch ---
 
   formatBatch(node: BatchNode): string {
+    const preserve = this.config.whitespace.newLines.preserveExistingEmptyLinesBetweenStatements;
     const parts: string[] = [];
     for (const batch of node.batches) {
-      const stmts = batch.statements
-        .map(s => this.formatStatement(s))
-        .filter(s => s.length > 0);
-      parts.push(stmts.join('\n'));
+      const stmtLines: string[] = [];
+      for (let i = 0; i < batch.statements.length; i++) {
+        const s = batch.statements[i];
+        const formatted = this.formatStatement(s);
+        if (formatted.length === 0) continue;
+        if (preserve && stmtLines.length > 0 && this.hasPrecedingBlankLine(s)) {
+          stmtLines.push('');
+        }
+        stmtLines.push(formatted);
+      }
+      parts.push(stmtLines.join('\n'));
       if (batch.separator) {
         parts.push(this.kw('GO'));
       }
@@ -703,13 +717,18 @@ class Formatter {
   // --- BEGIN/END ---
 
   private formatBeginEnd(node: BeginEndNode): string {
+    const preserve = this.config.whitespace.newLines.preserveExistingEmptyLinesBetweenStatements;
     const indent = this.indentStr();
     const lines: string[] = [];
     lines.push(indent + this.kw('BEGIN'));
 
     this.indent++;
     for (const stmt of node.statements) {
-      lines.push(this.formatStatement(stmt));
+      const formatted = this.formatStatement(stmt);
+      if (preserve && lines.length > 1 && this.hasPrecedingBlankLine(stmt)) {
+        lines.push('');
+      }
+      lines.push(formatted);
     }
     this.indent--;
 
