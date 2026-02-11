@@ -621,7 +621,7 @@ class Parser {
       if (node.type === 'identifier' || node.type === 'parenGroup') {
         return { ...node, alias: { asToken, name: aliasName } };
       }
-    } else if (this.isWord() && !this.isClauseKeyword() && !this.isJoinKeyword()) {
+    } else if ((this.isWord() || this.isType(TokenType.QuotedIdentifier)) && !this.isClauseKeyword() && !this.isJoinKeyword()) {
       const name = this.advance();
       if (node.type === 'identifier' || node.type === 'parenGroup') {
         return { ...node, alias: { name } };
