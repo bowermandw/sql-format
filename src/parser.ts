@@ -108,6 +108,10 @@ class Parser {
       }
 
       if (this.isType(TokenType.Semicolon)) {
+        // Attach semicolon to preceding statement
+        if (currentStatements.length > 0) {
+          (currentStatements[currentStatements.length - 1] as any)._hasSemicolon = true;
+        }
         this.advance();
         continue;
       }
@@ -935,7 +939,13 @@ class Parser {
     const statements: SqlNode[] = [];
 
     while (!this.isEOF() && !this.isWord('END')) {
-      if (this.isType(TokenType.Semicolon)) { this.advance(); continue; }
+      if (this.isType(TokenType.Semicolon)) {
+        if (statements.length > 0) {
+          (statements[statements.length - 1] as any)._hasSemicolon = true;
+        }
+        this.advance();
+        continue;
+      }
       const stmt = this.parseStatement();
       if (stmt) statements.push(stmt);
       else break;

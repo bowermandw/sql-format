@@ -54,9 +54,15 @@ class Formatter {
    * if insertSemicolons === 'insert'. Handles multi-line strings by
    * appending to the last line.
    */
-  private withSemicolon(formatted: string): string {
-    if (this.config.whitespace.insertSemicolons !== 'insert') return formatted;
-    return formatted + this.semicolonStr();
+  private withSemicolon(formatted: string, node?: SqlNode): string {
+    const mode = this.config.whitespace.insertSemicolons;
+    if (mode === 'insert') {
+      return formatted + this.semicolonStr();
+    }
+    if (mode === 'asis' && node && (node as any)._hasSemicolon) {
+      return formatted + this.semicolonStr();
+    }
+    return formatted;
   }
 
   private padToWidth(s: string, width: number): string {
@@ -80,6 +86,7 @@ class Formatter {
       case 'return':
       case 'rawToken':
       case 'dropTable':
+      case 'createTable':
         return true;
       default:
         return false;
@@ -137,7 +144,7 @@ class Formatter {
     const comments = this.formatLeadingComments(node);
     const formatted = this.formatNode(node);
     if (this.isLeafStatement(node)) {
-      return comments + this.withSemicolon(formatted);
+      return comments + this.withSemicolon(formatted, node);
     }
     return comments + formatted;
   }
