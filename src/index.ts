@@ -9,15 +9,15 @@ function printUsage(): void {
   console.log(`Usage: sql-format [options] <input.sql>
 
 Options:
-  --style <file>                          Path to a JSON style configuration file
-  --enclose-identifiers <mode>            withBrackets | withoutBrackets | asis
-  --enclose-datatypes <mode>              withBrackets | withoutBrackets | asis
-  --insert-semicolons                     Insert semicolons after each statement
-  --line-ending <lf|crlf>                 Line ending style (default: lf)
+  -s, --style <file>                      Path to a JSON style configuration file
+  -e, --enclose-identifiers <mode>        withBrackets | withoutBrackets | asis
+  -d, --enclose-datatypes <mode>          withBrackets | withoutBrackets | asis
+  -c, --insert-semicolons                 Insert semicolons after each statement
+  -l, --line-ending <lf|crlf>            Line ending style (default: lf)
   -i, --in-place                          Overwrite the input file with formatted output
-  --tokens                                Print token list (debug mode)
-  --ast                                   Print AST as JSON (debug mode)
-  --help                                  Show this help message
+  -t, --tokens                            Print token list (debug mode)
+  -a, --ast                               Print AST as JSON (debug mode)
+  -h, --help                              Show this help message
 
 Examples:
   sql-format --style style1.json input.sql
@@ -44,19 +44,19 @@ function main(): void {
       process.exit(0);
     } else if (arg === '--style' || arg === '-s') {
       stylePath = args[++i];
-    } else if (arg === '--enclose-identifiers') {
+    } else if (arg === '--enclose-identifiers' || arg === '-e') {
       encloseIdentifiers = args[++i];
-    } else if (arg === '--enclose-datatypes') {
+    } else if (arg === '--enclose-datatypes' || arg === '-d') {
       encloseDataTypes = args[++i];
-    } else if (arg === '--insert-semicolons') {
+    } else if (arg === '--insert-semicolons' || arg === '-c') {
       insertSemicolons = true;
-    } else if (arg === '--line-ending') {
+    } else if (arg === '--line-ending' || arg === '-l') {
       lineEnding = args[++i];
     } else if (arg === '--in-place' || arg === '-i') {
       inPlace = true;
-    } else if (arg === '--tokens') {
+    } else if (arg === '--tokens' || arg === '-t') {
       debugTokens = true;
-    } else if (arg === '--ast') {
+    } else if (arg === '--ast' || arg === '-a') {
       debugAst = true;
     } else if (!arg.startsWith('-')) {
       inputPath = arg;
