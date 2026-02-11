@@ -545,7 +545,42 @@ class Formatter {
     if (node.values) {
       lines.push(indent + this.kw('VALUES'));
       for (const row of node.values.rows) {
-        lines.push(indent + '(' + row.map(v => this.formatNode(v)).join(', ') + ')');
+        const hasComments = row.some(v => (v as any)._trailingComment);
+        if (hasComments) {
+          // Format each value on its own line with comments
+          const formatted = row.map(v => ({
+            text: this.formatNode(v),
+            comment: (v as any)._trailingComment as Token | undefined,
+          }));
+
+          // Compute alignment width for comments
+          let alignWidth = 0;
+          if (this.config.lists.alignComments) {
+            for (let i = 0; i < formatted.length; i++) {
+              const suffix = i < formatted.length - 1 ? ',' : '';
+              const lineLen = formatted[i].text.length + suffix.length;
+              if (formatted[i].comment && lineLen > alignWidth) alignWidth = lineLen;
+            }
+          }
+
+          lines.push(indent + '(');
+          for (let i = 0; i < formatted.length; i++) {
+            const comma = i < formatted.length - 1 ? ',' : '';
+            let valueLine = clauseIndent + formatted[i].text + comma;
+            if (formatted[i].comment) {
+              if (this.config.lists.alignComments && alignWidth > 0) {
+                const contentLen = formatted[i].text.length + comma.length;
+                const pad = alignWidth - contentLen;
+                if (pad > 0) valueLine += ' '.repeat(pad);
+              }
+              valueLine += ' ' + formatted[i].comment!.value;
+            }
+            lines.push(valueLine);
+          }
+          lines.push(indent + ')');
+        } else {
+          lines.push(indent + '(' + row.map(v => this.formatNode(v)).join(', ') + ')');
+        }
       }
     }
 

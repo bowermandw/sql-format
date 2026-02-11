@@ -745,7 +745,19 @@ class Parser {
           const row: SqlNode[] = [];
           row.push(this.parseExpression());
           while (this.isType(TokenType.Comma)) {
-            this.advance();
+            const commaToken = this.advance();
+            // Skip trailing comma before )
+            if (this.isType(TokenType.RightParen)) {
+              // Transfer comment from trailing comma to last value
+              if (commaToken.trailingComment && row.length > 0) {
+                (row[row.length - 1] as any)._trailingComment = commaToken.trailingComment;
+              }
+              break;
+            }
+            // Transfer trailing comment from comma to preceding value
+            if (commaToken.trailingComment && row.length > 0) {
+              (row[row.length - 1] as any)._trailingComment = commaToken.trailingComment;
+            }
             row.push(this.parseExpression());
           }
           if (this.isType(TokenType.RightParen)) this.advance();
