@@ -1078,9 +1078,63 @@ class Formatter {
   private formatInExpression(node: InExpressionNode): string {
     const expr = this.formatNode(node.expression);
     const notStr = node.notToken ? this.kw('NOT') + ' ' : '';
-    const values = node.values.map(v => this.formatNode(v)).join(', ');
+    const formattedValues = node.values.map(v => this.formatNode(v));
     const space = this.config.operators.in.addSpaceAroundInContents ? ' ' : '';
-    return `${expr} ${notStr}${this.kw('IN')} (${space}${values}${space})`;
+
+    const valuesStr = formattedValues.join(', ');
+    const singleLine = `${expr} ${notStr}${this.kw('IN')} (${space}${valuesStr}${space})`;
+
+    // Check if wrapping is needed
+    const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
+    // The IN expression is typically placed at indent + 1 (inside a clause)
+    const lineIndentWidth = (this.indent + 1) * this.tabStr.length;
+
+    if (!this.config.whitespace.wrapLongLines || singleLine.length + lineIndentWidth <= maxLineLength) {
+      return singleLine;
+    }
+
+    // Wrap values: pack as many as fit per line, aligning to after the opening paren
+    const prefix = `${expr} ${notStr}${this.kw('IN')} (${space}`;
+    const continuationPad = ' '.repeat(lineIndentWidth + prefix.length);
+    const availableFirstLine = maxLineLength - lineIndentWidth - prefix.length;
+    const availableContinuation = maxLineLength - continuationPad.length;
+
+    const lineGroups: string[][] = [];
+    let currentGroup: string[] = [];
+    let currentLen = 0;
+    let isFirstLine = true;
+
+    for (const val of formattedValues) {
+      const addLen = currentGroup.length === 0 ? val.length : val.length + 2; // 2 for ", "
+      const available = isFirstLine ? availableFirstLine : availableContinuation;
+
+      if (currentGroup.length > 0 && currentLen + addLen > available) {
+        lineGroups.push(currentGroup);
+        currentGroup = [val];
+        currentLen = val.length;
+        isFirstLine = false;
+      } else {
+        currentGroup.push(val);
+        currentLen += addLen;
+      }
+    }
+    if (currentGroup.length > 0) {
+      lineGroups.push(currentGroup);
+    }
+
+    // Build result with continuation lines aligned after the opening paren
+    let result = prefix;
+    for (let i = 0; i < lineGroups.length; i++) {
+      if (i > 0) result += continuationPad;
+      result += lineGroups[i].join(', ');
+      if (i < lineGroups.length - 1) {
+        result += ',\n';
+      } else {
+        result += space + ')';
+      }
+    }
+
+    return result;
   }
 
   // --- BETWEEN ---
