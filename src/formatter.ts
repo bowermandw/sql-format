@@ -849,7 +849,8 @@ class Formatter {
     // Try collapse
     if (this.config.caseExpressions.collapseShortCaseExpressions) {
       const collapsed = this.collapseCase(node);
-      if (collapsed.length <= this.config.caseExpressions.collapseCaseExpressionsShorterThan) {
+      const indentWidth = this.indent * this.tabStr.length;
+      if (collapsed.length + indentWidth <= this.config.caseExpressions.collapseCaseExpressionsShorterThan) {
         return collapsed;
       }
     }
