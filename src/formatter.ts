@@ -514,7 +514,16 @@ class Formatter {
     }
     if (node.on) {
       const onIndent = this.indentStr(bi + 2);
-      line += '\n' + onIndent + this.kw('ON') + ' ' + this.formatNode(node.on.condition);
+      const onPrefix = this.kw('ON') + ' ';
+      const condStr = this.formatNode(node.on.condition);
+      const onLine = onIndent + onPrefix + condStr;
+
+      if (this.config.whitespace.wrapLongLines && onLine.length > this.config.whitespace.wrapLinesLongerThan) {
+        const condFormatted = this.formatCondition(node.on.condition, bi + 2);
+        line += '\n' + onIndent + onPrefix + condFormatted;
+      } else {
+        line += '\n' + onLine;
+      }
     }
     return line;
   }
