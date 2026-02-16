@@ -371,12 +371,14 @@ class Formatter {
     const firstOnNewLine = this.config.lists.placeFirstItemOnNewLine;
 
     // Compute alias alignment width if configured.
-    // Format each expression at the actual indent level so that wrapped
-    // (multi-line) expressions use the width of their *last* line, not the
-    // full unwrapped length.
+    // For multi-line expressions (e.g. wrapped CONCAT), only the last line
+    // matters, but its width already includes baked-in indentation.  We
+    // normalise every width to "characters after the clause indent" so
+    // single-line and multi-line items are compared on equal footing.
     let aliasAlignWidth: number | undefined;
     if (this.config.lists.alignAliases) {
       let maxExprWidth = 0;
+      const clauseIndentLen = this.indentStr(baseIndent + 1).length;
       const savedIndent = this.indent;
       this.indent = baseIndent + 1;
       for (const c of node.columns) {
@@ -385,11 +387,15 @@ class Formatter {
           const exprStr = aliased._expression
             ? this.formatNode(aliased._expression)
             : aliased.parts ? aliased.parts.map((p: Token) => this.formatIdentifierPart(p)).join('.') : '';
-          // For multi-line expressions, only the last line matters for alignment
-          const lastLine = exprStr.includes('\n')
-            ? exprStr.slice(exprStr.lastIndexOf('\n') + 1)
-            : exprStr;
-          if (lastLine.length > maxExprWidth) maxExprWidth = lastLine.length;
+          let effectiveWidth: number;
+          if (exprStr.includes('\n')) {
+            // Last line already contains indentation — subtract it
+            const lastLine = exprStr.slice(exprStr.lastIndexOf('\n') + 1);
+            effectiveWidth = lastLine.length - clauseIndentLen;
+          } else {
+            effectiveWidth = exprStr.length;
+          }
+          if (effectiveWidth > maxExprWidth) maxExprWidth = effectiveWidth;
         }
       }
       this.indent = savedIndent;
@@ -516,7 +522,14 @@ class Formatter {
     if (aliased._expression) {
       let s = this.formatNode(aliased._expression);
       if (aliased.alias) {
-        const effectiveLen = this.lastLineLength(s);
+        // For multi-line expressions the last line already contains baked-in
+        // indentation, so subtract the clause indent to get the effective
+        // width comparable to alignWidth (which is indent-relative).
+        const isMultiLine = s.includes('\n');
+        const lastLen = this.lastLineLength(s);
+        const effectiveLen = isMultiLine
+          ? lastLen - this.indentStr().length
+          : lastLen;
         if (alignWidth !== undefined && alignWidth > effectiveLen) {
           s = s + ' '.repeat(alignWidth - effectiveLen);
         }

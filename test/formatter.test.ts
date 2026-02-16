@@ -607,15 +607,19 @@ describe('function call wrapping', () => {
       },
     };
     const result = formatSQL(sql, config);
-    // Find the lines with col1 and col2 aliases
     const lines = result.split('\n');
+    const fullNameLine = lines.find(l => l.includes('AS full_name'));
     const col1Line = lines.find(l => l.includes('AS col1'));
     const col2Line = lines.find(l => l.includes('AS col2'));
+    expect(fullNameLine).toBeDefined();
     expect(col1Line).toBeDefined();
     expect(col2Line).toBeDefined();
     // The alias padding should NOT push aliases past the wrap limit
-    // (i.e., column1 should not have 80+ chars of padding)
     expect(col1Line!.length).toBeLessThanOrEqual(78);
     expect(col2Line!.length).toBeLessThanOrEqual(78);
+    // All AS keywords should be aligned at the same column
+    const asCol = (line: string) => line.indexOf(' AS ');
+    expect(asCol(fullNameLine!)).toBe(asCol(col1Line!));
+    expect(asCol(col1Line!)).toBe(asCol(col2Line!));
   });
 });
