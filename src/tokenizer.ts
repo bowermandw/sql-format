@@ -333,6 +333,12 @@ export function attachComments(tokens: Token[]): Token[] {
       pendingComments.push(tok);
       continue;
     }
+    // For EOF tokens, don't consume pending comments as leading comments;
+    // instead, let them be handled as trailing comments below
+    if (tok.type === TokenType.EOF) {
+      result.push(tok);
+      continue;
+    }
     if (pendingComments.length > 0) {
       tok.leadingComments = [...pendingComments];
       pendingComments.length = 0;
@@ -344,11 +350,25 @@ export function attachComments(tokens: Token[]): Token[] {
     result.push(tok);
   }
 
-  // If there are trailing comments with no subsequent token, attach to last token
+  // If there are trailing comments with no subsequent non-EOF token,
+  // attach them as trailingComments on the last meaningful token
+  // AND on the EOF token (so the parser can always find them)
   if (pendingComments.length > 0 && result.length > 0) {
-    const last = result[result.length - 1];
-    if (!last.leadingComments) last.leadingComments = [];
-    last.leadingComments.push(...pendingComments);
+    let lastIdx = result.length - 1;
+    // Skip past EOF token to find the real last token
+    if (result[lastIdx].type === TokenType.EOF && lastIdx > 0) {
+      lastIdx--;
+    }
+    const last = result[lastIdx];
+    if (!last.trailingComments) last.trailingComments = [];
+    last.trailingComments.push(...pendingComments);
+
+    // Also put on EOF so the parser can find them regardless
+    const eof = result[result.length - 1];
+    if (eof.type === TokenType.EOF && eof !== last) {
+      if (!eof.trailingComments) eof.trailingComments = [];
+      eof.trailingComments.push(...pendingComments);
+    }
   }
 
   return result;

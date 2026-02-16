@@ -124,7 +124,22 @@ class Parser {
       batches.push({ statements: currentStatements });
     }
 
-    return { type: 'batch', batches };
+    // Collect trailing comments from the last separator or the EOF token
+    let trailingComments: Token[] | undefined;
+    if (batches.length > 0) {
+      const lastBatch = batches[batches.length - 1];
+      if (lastBatch.separator?.trailingComments?.length) {
+        trailingComments = lastBatch.separator.trailingComments;
+      }
+    }
+    // Also check the EOF token for trailing comments (no-GO case)
+    if (this.isEOF() && this.current().trailingComments?.length) {
+      trailingComments = this.current().trailingComments;
+    }
+
+    const node: BatchNode = { type: 'batch', batches };
+    if (trailingComments) node.trailingComments = trailingComments;
+    return node;
   }
 
   parseStatement(): SqlNode | null {

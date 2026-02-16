@@ -170,6 +170,13 @@ class Formatter {
         parts.push(this.kw('GO'));
       }
     }
+    // Output any trailing comments at the end of the file
+    if (node.trailingComments?.length) {
+      // Add blank line before trailing comments if there was one in the source
+      for (const c of node.trailingComments) {
+        parts.push(c.value);
+      }
+    }
     return parts.join('\n') + '\n';
   }
 
@@ -1179,8 +1186,54 @@ class Formatter {
     lines.push(innerIndent + this.formatNode(node.aggregation));
 
     // FOR column IN (values)
-    const values = node.values.map(v => this.formatNode(v)).join(', ');
-    lines.push(innerIndent + this.kw('FOR') + ' ' + this.formatNode(node.pivotColumn) + ' ' + this.kw('IN') + ' (' + values + ')');
+    const formattedValues = node.values.map(v => this.formatNode(v));
+    const forPrefix = this.kw('FOR') + ' ' + this.formatNode(node.pivotColumn) + ' ' + this.kw('IN') + ' (';
+    const forLine = innerIndent + forPrefix + formattedValues.join(', ') + ')';
+    const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
+
+    if (!this.config.whitespace.wrapLongLines || forLine.length <= maxLineLength) {
+      lines.push(forLine);
+    } else {
+      // Wrap values: pack as many as fit per line, aligning after the opening paren
+      const continuationPad = innerIndent + ' '.repeat(forPrefix.length);
+      const availableFirstLine = maxLineLength - innerIndent.length - forPrefix.length;
+      const availableContinuation = maxLineLength - continuationPad.length;
+
+      const lineGroups: string[][] = [];
+      let currentGroup: string[] = [];
+      let currentLen = 0;
+      let isFirstLine = true;
+
+      for (const val of formattedValues) {
+        const addLen = currentGroup.length === 0 ? val.length : val.length + 2;
+        const available = isFirstLine ? availableFirstLine : availableContinuation;
+
+        if (currentGroup.length > 0 && currentLen + addLen > available) {
+          lineGroups.push(currentGroup);
+          currentGroup = [val];
+          currentLen = val.length;
+          isFirstLine = false;
+        } else {
+          currentGroup.push(val);
+          currentLen += addLen;
+        }
+      }
+      if (currentGroup.length > 0) {
+        lineGroups.push(currentGroup);
+      }
+
+      let result = innerIndent + forPrefix;
+      for (let i = 0; i < lineGroups.length; i++) {
+        if (i > 0) result += continuationPad;
+        result += lineGroups[i].join(', ');
+        if (i < lineGroups.length - 1) {
+          result += ',\n';
+        } else {
+          result += ')';
+        }
+      }
+      lines.push(result);
+    }
 
     // Closing paren + alias
     let closeLine = indent + ')';

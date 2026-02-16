@@ -39,6 +39,8 @@ export type SqlNode =
 export interface BatchNode {
   type: 'batch';
   batches: { statements: SqlNode[]; separator?: Token }[];
+  /** Trailing comments at the end of the file (after last statement/GO) */
+  trailingComments?: Token[];
 }
 
 export interface CreateProcedureNode {

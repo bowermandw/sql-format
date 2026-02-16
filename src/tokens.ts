@@ -39,6 +39,8 @@ export interface Token {
   leadingComments?: Token[];
   /** Trailing inline comment on same line */
   trailingComment?: Token;
+  /** Trailing comments that appear after this token at end of file/batch */
+  trailingComments?: Token[];
   /** Whether a blank line preceded this token in the original source */
   precedingBlankLine?: boolean;
 }
