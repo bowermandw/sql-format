@@ -591,4 +591,31 @@ describe('function call wrapping', () => {
     // Short enough to stay on one line
     expect(result).toContain('CONCAT(a, b, c)');
   });
+
+  it('alias alignment uses last line width when CONCAT is wrapped', () => {
+    const sql = `SELECT CONCAT(column1, ' - ', column2, ' / ', column3, ' (', column4, ')', ' [', column5, ']') AS full_name, column1 AS col1, column2 AS col2 FROM some_table`;
+    const config: Partial<FormatConfig> = {
+      whitespace: {
+        ...DEFAULT_CONFIG.whitespace,
+        wrapLongLines: true,
+        wrapLinesLongerThan: 78,
+      },
+      lists: {
+        ...DEFAULT_CONFIG.lists,
+        placeFirstItemOnNewLine: 'always' as const,
+        alignAliases: true,
+      },
+    };
+    const result = formatSQL(sql, config);
+    // Find the lines with col1 and col2 aliases
+    const lines = result.split('\n');
+    const col1Line = lines.find(l => l.includes('AS col1'));
+    const col2Line = lines.find(l => l.includes('AS col2'));
+    expect(col1Line).toBeDefined();
+    expect(col2Line).toBeDefined();
+    // The alias padding should NOT push aliases past the wrap limit
+    // (i.e., column1 should not have 80+ chars of padding)
+    expect(col1Line!.length).toBeLessThanOrEqual(78);
+    expect(col2Line!.length).toBeLessThanOrEqual(78);
+  });
 });

@@ -370,19 +370,29 @@ class Formatter {
     // Column list
     const firstOnNewLine = this.config.lists.placeFirstItemOnNewLine;
 
-    // Compute alias alignment width if configured
+    // Compute alias alignment width if configured.
+    // Format each expression at the actual indent level so that wrapped
+    // (multi-line) expressions use the width of their *last* line, not the
+    // full unwrapped length.
     let aliasAlignWidth: number | undefined;
     if (this.config.lists.alignAliases) {
       let maxExprWidth = 0;
+      const savedIndent = this.indent;
+      this.indent = baseIndent + 1;
       for (const c of node.columns) {
         const aliased = c as any;
         if (aliased.alias) {
           const exprStr = aliased._expression
             ? this.formatNode(aliased._expression)
             : aliased.parts ? aliased.parts.map((p: Token) => this.formatIdentifierPart(p)).join('.') : '';
-          if (exprStr.length > maxExprWidth) maxExprWidth = exprStr.length;
+          // For multi-line expressions, only the last line matters for alignment
+          const lastLine = exprStr.includes('\n')
+            ? exprStr.slice(exprStr.lastIndexOf('\n') + 1)
+            : exprStr;
+          if (lastLine.length > maxExprWidth) maxExprWidth = lastLine.length;
         }
       }
+      this.indent = savedIndent;
       if (maxExprWidth > 0) aliasAlignWidth = maxExprWidth;
     }
 
@@ -495,13 +505,20 @@ class Formatter {
     return s;
   }
 
+  /** Get the length of the last line of a possibly multi-line string. */
+  private lastLineLength(s: string): number {
+    const nlIdx = s.lastIndexOf('\n');
+    return nlIdx === -1 ? s.length : s.length - nlIdx - 1;
+  }
+
   private formatSelectItem(node: SqlNode, alignWidth?: number): string {
     const aliased = node as any;
     if (aliased._expression) {
       let s = this.formatNode(aliased._expression);
       if (aliased.alias) {
-        if (alignWidth !== undefined && alignWidth > s.length) {
-          s = s + ' '.repeat(alignWidth - s.length);
+        const effectiveLen = this.lastLineLength(s);
+        if (alignWidth !== undefined && alignWidth > effectiveLen) {
+          s = s + ' '.repeat(alignWidth - effectiveLen);
         }
         if (aliased.alias.asToken) {
           s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(aliased.alias.name);
