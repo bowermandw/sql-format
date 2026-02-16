@@ -443,3 +443,68 @@ describe('formatter with smartish_style.json', () => {
     expect(commaLines.length).toBeGreaterThan(0);
   });
 });
+
+describe('comments between clauses', () => {
+  it('preserves comments before FROM in SELECT', () => {
+    const sql = `SELECT
+    column1,
+    column2
+-- comment before FROM
+FROM
+    some_table`;
+    const result = formatSQL(sql);
+    expect(result).toContain('-- comment before FROM');
+  });
+
+  it('preserves comments before WHERE in SELECT', () => {
+    const sql = `SELECT column1
+FROM some_table
+-- comment before WHERE
+WHERE column1 = 1`;
+    const result = formatSQL(sql);
+    expect(result).toContain('-- comment before WHERE');
+  });
+
+  it('preserves comments before GROUP BY in SELECT', () => {
+    const sql = `SELECT column1, COUNT(*)
+FROM some_table
+-- comment before GROUP BY
+GROUP BY column1`;
+    const result = formatSQL(sql);
+    expect(result).toContain('-- comment before GROUP BY');
+  });
+
+  it('preserves comments before ORDER BY in SELECT', () => {
+    const sql = `SELECT column1
+FROM some_table
+-- comment before ORDER BY
+ORDER BY column1`;
+    const result = formatSQL(sql);
+    expect(result).toContain('-- comment before ORDER BY');
+  });
+
+  it('preserves comments before HAVING in SELECT', () => {
+    const sql = `SELECT column1, COUNT(*)
+FROM some_table
+GROUP BY column1
+-- comment before HAVING
+HAVING COUNT(*) > 1`;
+    const result = formatSQL(sql);
+    expect(result).toContain('-- comment before HAVING');
+  });
+
+  it('preserves trailing comments after last statement', () => {
+    const sql = `SELECT 1
+-- trailing comment`;
+    const result = formatSQL(sql);
+    expect(result).toContain('-- trailing comment');
+  });
+
+  it('preserves trailing comments after GO', () => {
+    const sql = `SELECT 1
+GO
+-- trailing comment after GO`;
+    const result = formatSQL(sql);
+    expect(result).toContain('-- trailing comment after GO');
+  });
+});

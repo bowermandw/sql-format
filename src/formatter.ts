@@ -136,6 +136,15 @@ class Formatter {
       .join('\n') + '\n';
   }
 
+  /** Format leading comments from a token directly, at a given indent level. */
+  private formatTokenLeadingComments(token: Token, indentLevel?: number): string {
+    if (!token?.leadingComments?.length) return '';
+    const indent = this.indentStr(indentLevel);
+    return token.leadingComments
+      .map(c => indent + c.value)
+      .join('\n') + '\n';
+  }
+
   /**
    * Format a statement and append a semicolon if it's a leaf statement
    * and insertSemicolons is 'insert'.
@@ -343,8 +352,8 @@ class Formatter {
     const indent = this.indentStr(baseIndent);
     const clauseIndent = this.indentStr(baseIndent + 1);
 
-    // Try collapse
-    if (this.config.dml.collapseShortStatements) {
+    // Try collapse (skip if any clause tokens have leading comments)
+    if (this.config.dml.collapseShortStatements && !this.selectHasClauseComments(node)) {
       const collapsed = this.collapseSelect(node);
       if (collapsed.length <= this.config.dml.collapseStatementsShorterThan) {
         return indent + collapsed;
@@ -413,6 +422,8 @@ class Formatter {
 
     // FROM
     if (node.from) {
+      const fromComments = this.formatTokenLeadingComments(node.from.token, baseIndent);
+      if (fromComments) lines.push(fromComments.trimEnd());
       lines.push(indent + this.kw('FROM'));
       const source = node.from.source;
       if (source.type === 'parenGroup' && source.inner.length === 1 && source.inner[0].type === 'select') {
@@ -427,25 +438,43 @@ class Formatter {
 
     // WHERE
     if (node.where) {
+      const whereComments = this.formatTokenLeadingComments(node.where.token, baseIndent);
+      if (whereComments) lines.push(whereComments.trimEnd());
       lines.push(this.formatWhere(node.where, baseIndent));
     }
 
     // GROUP BY
     if (node.groupBy) {
+      const gbComments = this.formatTokenLeadingComments(node.groupBy.tokens[0], baseIndent);
+      if (gbComments) lines.push(gbComments.trimEnd());
       lines.push(this.formatGroupBy(node.groupBy, baseIndent));
     }
 
     // HAVING
     if (node.having) {
+      const havingComments = this.formatTokenLeadingComments(node.having.token, baseIndent);
+      if (havingComments) lines.push(havingComments.trimEnd());
       lines.push(this.formatHaving(node.having, baseIndent));
     }
 
     // ORDER BY
     if (node.orderBy) {
+      const obComments = this.formatTokenLeadingComments(node.orderBy.tokens[0], baseIndent);
+      if (obComments) lines.push(obComments.trimEnd());
       lines.push(this.formatOrderBy(node.orderBy, baseIndent));
     }
 
     return lines.join('\n');
+  }
+
+  /** Check if any clause token in a SELECT has leading comments that must be preserved. */
+  private selectHasClauseComments(node: SelectNode): boolean {
+    if (node.from?.token?.leadingComments?.length) return true;
+    if (node.where?.token?.leadingComments?.length) return true;
+    if (node.groupBy?.tokens[0]?.leadingComments?.length) return true;
+    if (node.having?.token?.leadingComments?.length) return true;
+    if (node.orderBy?.tokens[0]?.leadingComments?.length) return true;
+    return false;
   }
 
   private collapseSelect(node: SelectNode): string {
