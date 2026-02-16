@@ -507,4 +507,20 @@ GO
     const result = formatSQL(sql);
     expect(result).toContain('-- trailing comment after GO');
   });
+
+  it('does not insert blank lines between comments with CRLF input', () => {
+    const sql = "SELECT 1\r\nGO\r\n-- comment1\r\n-- comment2\r\n";
+    const result = formatSQL(sql);
+    // Comments should be on consecutive lines with no blank line between them
+    expect(result).toContain('-- comment1\n-- comment2');
+    // No \r should remain in comment text
+    expect(result).not.toContain('\r');
+  });
+
+  it('does not insert blank lines between clause comments with CRLF input', () => {
+    const sql = "SELECT\r\n    column1\r\n-- comment before FROM\r\nFROM\r\n    some_table\r\n";
+    const result = formatSQL(sql);
+    expect(result).toContain('-- comment before FROM');
+    expect(result).not.toContain('\r');
+  });
 });

@@ -45,7 +45,7 @@ export function tokenize(input: string): Token[] {
     // Line comment: -- ...
     if (ch === '-' && peek(1) === '-') {
       let comment = '';
-      while (pos < input.length && peek() !== '\n') {
+      while (pos < input.length && peek() !== '\n' && peek() !== '\r') {
         comment += advance();
       }
       tokens.push(makeToken(TokenType.LineComment, comment, startOffset, startLine, startCol));
