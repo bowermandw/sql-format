@@ -291,6 +291,8 @@ export interface LiteralNode {
 export interface RawTokenNode {
   type: 'rawToken';
   token: Token;
+  /** Additional tokens for multi-token raw statements (e.g. EXEC) */
+  extraTokens?: Token[];
 }
 
 export interface ColumnListNode {

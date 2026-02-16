@@ -1066,15 +1066,13 @@ class Parser {
   private parseExec(): SqlNode {
     const token = this.advance(); // EXEC/EXECUTE
     // Consume until statement end
-    const parts: Token[] = [token];
+    const extra: Token[] = [];
     while (!this.isEOF() && !this.isStatementEnd() && !this.isType(TokenType.Semicolon)) {
-      parts.push(this.advance());
+      extra.push(this.advance());
     }
-    // Return as a sequence of raw tokens
-    if (parts.length === 1) {
-      return { type: 'rawToken', token } as RawTokenNode;
-    }
-    return { type: 'rawToken', token: parts[0] } as RawTokenNode;
+    const node: RawTokenNode = { type: 'rawToken', token };
+    if (extra.length > 0) node.extraTokens = extra;
+    return node;
   }
 
   private parseDrop(): SqlNode {
@@ -1459,6 +1457,8 @@ class Parser {
     while (!this.isEOF() && !this.isType(TokenType.BatchSeparator) && !this.isType(TokenType.Semicolon)) {
       allTokens.push(this.advance());
     }
-    return { type: 'rawToken', token: allTokens[0] } as RawTokenNode;
+    const node: RawTokenNode = { type: 'rawToken', token: allTokens[0] };
+    if (allTokens.length > 1) node.extraTokens = allTokens.slice(1);
+    return node;
   }
 }

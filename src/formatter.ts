@@ -234,7 +234,7 @@ class Formatter {
       case 'orderBy': return this.formatOrderBy(node);
       case 'having': return this.formatHaving(node);
       case 'join': return this.formatJoin(node);
-      case 'rawToken': return this.tokenValue(node.token);
+      case 'rawToken': return this.formatRawToken(node);
       case 'columnDef': return this.formatColumnDef(node);
       case 'constraint': return this.formatConstraint(node);
       default: return '';
@@ -342,6 +342,34 @@ class Formatter {
 
   private formatConstraint(node: ConstraintNode): string {
     return node.tokens.map(t => this.kw(t.value)).join(' ');
+  }
+
+  // --- Raw Token (EXEC, fallback statements) ---
+
+  private formatRawToken(node: RawTokenNode): string {
+    let s = this.tokenValue(node.token);
+    if (node.extraTokens) {
+      for (const t of node.extraTokens) {
+        // Preserve dots without spaces (qualified names)
+        if (t.type === TokenType.Dot) {
+          s += '.';
+        } else if (s.endsWith('.')) {
+          s += this.tokenValue(t);
+        } else if (t.type === TokenType.Comma) {
+          s += ',';
+        } else if (t.type === TokenType.Equals) {
+          s += ' =';
+        } else if (t.type === TokenType.LeftParen) {
+          s += ' (';
+        } else if (t.type === TokenType.RightParen) {
+          s += ')';
+        } else {
+          s += ' ' + this.tokenValue(t);
+        }
+      }
+      return this.indentStr() + s;
+    }
+    return s;
   }
 
   // --- SELECT ---

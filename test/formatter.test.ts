@@ -670,3 +670,33 @@ describe('CASE THEN expression wrapping', () => {
     expect(result).toMatch(/THEN b \+ c/);
   });
 });
+
+describe('EXEC/EXECUTE statements', () => {
+  it('preserves EXECUTE with procedure name and parameters', () => {
+    const sql = `EXECUTE dbo.stored_procedure_name @param = 'value'`;
+    const result = formatSQL(sql);
+    expect(result).toContain('EXECUTE');
+    expect(result).toContain('dbo.stored_procedure_name');
+    expect(result).toContain("@param");
+    expect(result).toContain("'value'");
+  });
+
+  it('preserves EXEC with multiple parameters', () => {
+    const sql = `EXEC dbo.my_proc @p1 = 'val1', @p2 = 42`;
+    const result = formatSQL(sql);
+    expect(result).toContain('EXEC');
+    expect(result).toContain('dbo.my_proc');
+    expect(result).toContain('@p1');
+    expect(result).toContain('@p2');
+    expect(result).toContain("'val1'");
+    expect(result).toContain('42');
+  });
+
+  it('preserves EXECUTE inside BEGIN/END', () => {
+    const sql = `BEGIN\n    EXECUTE dbo.some_proc @param = 'value';\nEND`;
+    const result = formatSQL(sql);
+    expect(result).toContain('EXECUTE');
+    expect(result).toContain('dbo.some_proc');
+    expect(result).toContain("@param");
+  });
+});
