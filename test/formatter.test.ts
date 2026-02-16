@@ -555,3 +555,40 @@ LEFT OUTER JOIN dbo.table_name b
     expect(result).not.toContain('(b');
   });
 });
+
+describe('function call wrapping', () => {
+  it('wraps long CONCAT calls that exceed wrapLinesLongerThan', () => {
+    const sql = `SELECT CONCAT(column1, ' - ', column2, ' / ', column3, ' (', column4, ')', ' [', column5, ']') FROM some_table`;
+    const config: Partial<FormatConfig> = {
+      whitespace: {
+        ...DEFAULT_CONFIG.whitespace,
+        wrapLongLines: true,
+        wrapLinesLongerThan: 78,
+      },
+    };
+    const result = formatSQL(sql, config);
+    const lines = result.trim().split('\n');
+    // Every line should respect the wrap limit
+    for (const line of lines) {
+      expect(line.length).toBeLessThanOrEqual(78);
+    }
+    // The CONCAT should be expanded across multiple lines
+    expect(result).toContain('CONCAT');
+    expect(result).toContain('column1');
+    expect(result).toContain('column5');
+  });
+
+  it('keeps short function calls on one line', () => {
+    const sql = `SELECT CONCAT(a, b, c) FROM t`;
+    const config: Partial<FormatConfig> = {
+      whitespace: {
+        ...DEFAULT_CONFIG.whitespace,
+        wrapLongLines: true,
+        wrapLinesLongerThan: 78,
+      },
+    };
+    const result = formatSQL(sql, config);
+    // Short enough to stay on one line
+    expect(result).toContain('CONCAT(a, b, c)');
+  });
+});

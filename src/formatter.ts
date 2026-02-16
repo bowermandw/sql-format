@@ -1004,8 +1004,14 @@ class Formatter {
     const formattedArgs = node.args.map(a => this.formatNode(a));
     const inline = `${name}(${formattedArgs.join(', ')})`;
 
-    // If any argument is multi-line, expand the function call
-    if (formattedArgs.some(a => a.includes('\n'))) {
+    // Check if the inline version exceeds the wrap limit or any arg is multi-line
+    const indentWidth = this.indent * this.tabStr.length;
+    const needsExpand = formattedArgs.some(a => a.includes('\n')) ||
+      (this.config.whitespace.wrapLongLines &&
+       inline.length + indentWidth > this.config.whitespace.wrapLinesLongerThan &&
+       node.args.length > 1);
+
+    if (needsExpand) {
       const innerIndent = this.indentStr(this.indent + 1);
       const outerIndent = this.indentStr(this.indent);
       // Re-format args at the inner indent level so nested constructs align
