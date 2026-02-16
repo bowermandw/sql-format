@@ -585,6 +585,16 @@ class Formatter {
   }
 
   private formatCondition(node: SqlNode, indentLevel: number): string {
+    // If this node was parenthesized in the source, format the inner expression
+    // and wrap it in parens to preserve grouping
+    if ((node as any)._parenthesized) {
+      const inner = this.formatConditionInner(node, indentLevel);
+      return '(' + inner + ')';
+    }
+    return this.formatConditionInner(node, indentLevel);
+  }
+
+  private formatConditionInner(node: SqlNode, indentLevel: number): string {
     if (node.type === 'expression') {
       const expr = node as ExpressionNode;
       const opUpper = expr.operator.value.toUpperCase();
@@ -946,9 +956,17 @@ class Formatter {
 
   // --- Expressions ---
 
+  /** Wrap a formatted child expression in parens if it was parenthesized in the source. */
+  private maybeParenthesize(child: SqlNode, formatted: string): string {
+    if ((child as any)._parenthesized) {
+      return '(' + formatted + ')';
+    }
+    return formatted;
+  }
+
   private formatExpression(node: ExpressionNode): string {
-    const left = this.formatNode(node.left);
-    const right = this.formatNode(node.right);
+    const left = this.maybeParenthesize(node.left, this.formatNode(node.left));
+    const right = this.maybeParenthesize(node.right, this.formatNode(node.right));
     const op = this.tokenValue(node.operator);
 
     // Handle unary (empty left)

@@ -1328,7 +1328,12 @@ class Parser {
         inner.push(this.parseExpression());
       }
       if (this.isType(TokenType.RightParen)) this.advance();
-      if (inner.length === 1) return inner[0];
+      if (inner.length === 1) {
+        // Mark the expression as having been parenthesized so the formatter
+        // can re-emit parens when needed to preserve operator precedence
+        (inner[0] as any)._parenthesized = true;
+        return inner[0];
+      }
       return { type: 'parenGroup', inner } as ParenGroupNode;
     }
 

@@ -524,3 +524,34 @@ GO
     expect(result).not.toContain('\r');
   });
 });
+
+describe('parentheses preservation in conditions', () => {
+  it('preserves parentheses around OR inside AND in ON clause', () => {
+    const sql = `SELECT col1
+FROM some_table a
+LEFT OUTER JOIN dbo.table_name b
+    ON (b.col = a.col)
+    AND (b.col2 = a.col2 OR (b.col2 IS NULL AND a.col2 IS NULL))`;
+    const result = formatSQL(sql);
+    // The OR grouped with AND must keep its parens
+    expect(result).toContain('(b.col2 = a.col2');
+    expect(result).toContain('OR');
+    // The inner IS NULL AND group must keep its parens
+    expect(result).toContain('(b.col2 IS NULL');
+    expect(result).toContain('a.col2 IS NULL)');
+  });
+
+  it('preserves parentheses around OR inside AND in WHERE clause', () => {
+    const sql = `SELECT col1 FROM t WHERE a = 1 AND (b = 2 OR c = 3)`;
+    const result = formatSQL(sql);
+    expect(result).toContain('(b = 2 OR c = 3)');
+  });
+
+  it('does not add unnecessary parens to simple conditions', () => {
+    const sql = `SELECT col1 FROM t WHERE a = 1 AND b = 2`;
+    const result = formatSQL(sql);
+    // No parens should appear in a simple AND chain
+    expect(result).not.toContain('(a');
+    expect(result).not.toContain('(b');
+  });
+});
