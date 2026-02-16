@@ -699,4 +699,21 @@ describe('EXEC/EXECUTE statements', () => {
     expect(result).toContain('dbo.some_proc');
     expect(result).toContain("@param");
   });
+
+  it('does not consume the following statement', () => {
+    const sql = `EXECUTE dbo.stored_proc_name @param1 = 'value'\n\nDECLARE @now DATETIME = GETDATE();`;
+    const result = formatSQL(sql);
+    // EXECUTE should have its own content
+    expect(result).toContain("EXECUTE dbo.stored_proc_name @param1 = 'value'");
+    // DECLARE should be a separate statement, not consumed by EXEC
+    expect(result).toContain('DECLARE @now DATETIME');
+    expect(result).toContain('GETDATE()');
+  });
+
+  it('does not consume a SELECT that follows', () => {
+    const sql = `EXEC dbo.my_proc @p = 1\nSELECT 1`;
+    const result = formatSQL(sql);
+    expect(result).toContain('EXEC dbo.my_proc @p = 1');
+    expect(result).toContain('SELECT 1');
+  });
 });

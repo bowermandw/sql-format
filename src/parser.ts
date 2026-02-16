@@ -1065,14 +1065,30 @@ class Parser {
 
   private parseExec(): SqlNode {
     const token = this.advance(); // EXEC/EXECUTE
-    // Consume until statement end
+    // Consume until statement end or the start of another statement
     const extra: Token[] = [];
-    while (!this.isEOF() && !this.isStatementEnd() && !this.isType(TokenType.Semicolon)) {
+    while (!this.isEOF() && !this.isStatementEnd() && !this.isType(TokenType.Semicolon) && !this.isStatementStart()) {
       extra.push(this.advance());
     }
     const node: RawTokenNode = { type: 'rawToken', token };
     if (extra.length > 0) node.extraTokens = extra;
     return node;
+  }
+
+  /** Check if the current token looks like the start of a new statement. */
+  private isStatementStart(): boolean {
+    if (this.current().type !== TokenType.Word) return false;
+    const upper = this.current().value.toUpperCase();
+    switch (upper) {
+      case 'SELECT': case 'INSERT': case 'UPDATE': case 'DELETE':
+      case 'CREATE': case 'ALTER': case 'DROP': case 'TRUNCATE':
+      case 'DECLARE': case 'SET': case 'PRINT': case 'RETURN':
+      case 'IF': case 'WHILE': case 'BEGIN': case 'WITH':
+      case 'EXEC': case 'EXECUTE':
+        return true;
+      default:
+        return false;
+    }
   }
 
   private parseDrop(): SqlNode {
