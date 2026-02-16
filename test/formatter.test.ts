@@ -623,3 +623,50 @@ describe('function call wrapping', () => {
     expect(asCol(col1Line!)).toBe(asCol(col2Line!));
   });
 });
+
+describe('CASE THEN expression wrapping', () => {
+  it('wraps long THEN expressions that exceed wrapLinesLongerThan', () => {
+    const sql = `SELECT CASE WHEN column1 = 'value' THEN (some_very_long_alias.some_very_long_column1 + some_very_long_alias.some_very_long_column2) * some_very_long_alias.some_very_long_column3 ELSE 0 END AS result FROM some_table`;
+    const config: Partial<FormatConfig> = {
+      whitespace: {
+        ...DEFAULT_CONFIG.whitespace,
+        wrapLongLines: true,
+        wrapLinesLongerThan: 78,
+      },
+      caseExpressions: {
+        ...DEFAULT_CONFIG.caseExpressions,
+        placeThenOnNewLine: true,
+        thenAlignment: 'toWhen' as const,
+      },
+    };
+    const result = formatSQL(sql, config);
+    const lines = result.trim().split('\n');
+    // The THEN result expression should be wrapped so no line exceeds 78
+    const thenLines = lines.filter(l => l.trimStart().startsWith('THEN') || l.includes('some_very_long'));
+    for (const line of thenLines) {
+      expect(line.length).toBeLessThanOrEqual(78);
+    }
+    // The expression content should still be present
+    expect(result).toContain('some_very_long_alias.some_very_long_column1');
+    expect(result).toContain('some_very_long_alias.some_very_long_column3');
+  });
+
+  it('does not wrap short THEN expressions', () => {
+    const sql = `SELECT CASE WHEN a = 1 THEN b + c ELSE 0 END FROM t`;
+    const config: Partial<FormatConfig> = {
+      whitespace: {
+        ...DEFAULT_CONFIG.whitespace,
+        wrapLongLines: true,
+        wrapLinesLongerThan: 78,
+      },
+      caseExpressions: {
+        ...DEFAULT_CONFIG.caseExpressions,
+        placeThenOnNewLine: true,
+        thenAlignment: 'toWhen' as const,
+      },
+    };
+    const result = formatSQL(sql, config);
+    // THEN and its expression should be on the same line
+    expect(result).toMatch(/THEN b \+ c/);
+  });
+});

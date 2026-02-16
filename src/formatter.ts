@@ -954,14 +954,43 @@ class Formatter {
       // 'indentedFromWhen' or default
       thenIndent = whenIndent + this.tabStr;
     }
+    const wrapEnabled = this.config.whitespace.wrapLongLines;
+    const maxLineLen = this.config.whitespace.wrapLinesLongerThan;
+    const resultIndent = thenIndent + this.tabStr;
+    // Compute result indent level for wrapExpression
+    const resultIndentLevel = thenAlignment === 'toWhen'
+      ? this.indent + 2
+      : this.indent + 3;
+
     for (const wc of node.whenClauses) {
       let whenLine = whenIndent + this.kw('WHEN') + ' ' + this.formatNode(wc.condition);
+      const resultStr = this.formatNode(wc.result);
       if (this.config.caseExpressions.placeThenOnNewLine) {
         parts.push(whenLine);
-        parts.push(thenIndent + this.kw('THEN') + ' ' + this.formatNode(wc.result));
+        const thenLine = thenIndent + this.kw('THEN') + ' ' + resultStr;
+        if (wrapEnabled && thenLine.length > maxLineLen) {
+          parts.push(thenIndent + this.kw('THEN'));
+          const wrappedResult = this.wrapExpression(wc.result, resultIndentLevel);
+          parts.push(resultIndent + wrappedResult);
+        } else {
+          parts.push(thenLine);
+        }
       } else {
-        whenLine += ' ' + this.kw('THEN') + ' ' + this.formatNode(wc.result);
-        parts.push(whenLine);
+        const fullLine = whenLine + ' ' + this.kw('THEN') + ' ' + resultStr;
+        if (wrapEnabled && fullLine.length > maxLineLen) {
+          // Put THEN on new line, and possibly the result on another
+          parts.push(whenLine);
+          const thenLine = thenIndent + this.kw('THEN') + ' ' + resultStr;
+          if (thenLine.length > maxLineLen) {
+            parts.push(thenIndent + this.kw('THEN'));
+            const wrappedResult = this.wrapExpression(wc.result, resultIndentLevel);
+            parts.push(resultIndent + wrappedResult);
+          } else {
+            parts.push(thenLine);
+          }
+        } else {
+          parts.push(fullLine);
+        }
       }
     }
 
@@ -985,6 +1014,30 @@ class Formatter {
   }
 
   // --- Expressions ---
+
+  /**
+   * Format an expression, wrapping at operator boundaries if the inline
+   * result would exceed the configured max line length at the given indent.
+   */
+  private wrapExpression(node: SqlNode, indentLevel: number): string {
+    const inline = this.formatNode(node);
+    const indentWidth = indentLevel * this.tabStr.length;
+    if (!this.config.whitespace.wrapLongLines ||
+        inline.length + indentWidth <= this.config.whitespace.wrapLinesLongerThan) {
+      return inline;
+    }
+    // Try to split at the top-level operator
+    if (node.type === 'expression') {
+      const expr = node as ExpressionNode;
+      const left = this.maybeParenthesize(expr.left, this.wrapExpression(expr.left, indentLevel));
+      const right = this.maybeParenthesize(expr.right, this.wrapExpression(expr.right, indentLevel + 1));
+      const op = this.tokenValue(expr.operator);
+      const indent = this.indentStr(indentLevel);
+      const childIndent = this.indentStr(indentLevel + 1);
+      return left + '\n' + indent + op + ' ' + right;
+    }
+    return inline;
+  }
 
   /** Wrap a formatted child expression in parens if it was parenthesized in the source. */
   private maybeParenthesize(child: SqlNode, formatted: string): string {
