@@ -717,3 +717,18 @@ describe('EXEC/EXECUTE statements', () => {
     expect(result).toContain('SELECT 1');
   });
 });
+
+describe('comments before closing paren', () => {
+  it('preserves comment before closing paren of subquery in FROM', () => {
+    const sql = `SELECT * FROM (SELECT column FROM dbo.some_table\n-- where column = 'value'\n) [tbl3]`;
+    const result = formatSQL(sql);
+    expect(result).toContain("-- where column = 'value'");
+    expect(result).toContain('[tbl3]');
+  });
+
+  it('preserves comment before closing paren of subquery in JOIN', () => {
+    const sql = `SELECT a.col FROM dbo.t a LEFT OUTER JOIN (SELECT id FROM dbo.other\n-- AND active = 1\n) b ON a.id = b.id`;
+    const result = formatSQL(sql);
+    expect(result).toContain('-- AND active = 1');
+  });
+});

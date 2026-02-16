@@ -145,6 +145,13 @@ class Formatter {
       .join('\n') + '\n';
   }
 
+  /** Format comments that appeared before a closing parenthesis. */
+  private formatCloseComments(comments: Token[] | undefined, indentLevel: number): string {
+    if (!comments?.length) return '';
+    const indent = this.indentStr(indentLevel + 1);
+    return '\n' + comments.map(c => indent + c.value).join('\n');
+  }
+
   /**
    * Format a statement and append a semicolon if it's a leaf statement
    * and insertSemicolons is 'insert'.
@@ -1433,8 +1440,8 @@ class Formatter {
       const dml = this.config.dml;
       const alias = this.formatParenGroupAlias(node);
 
-      // Try collapsing the subquery if configured (skip collapse if pivot attached)
-      if (dml.collapseShortSubqueries && !node.pivot) {
+      // Try collapsing the subquery if configured (skip collapse if pivot or close comments attached)
+      if (dml.collapseShortSubqueries && !node.pivot && !node.closeComments?.length) {
         const collapsed = this.collapseSelect(node.inner[0] as SelectNode);
         if (('(' + collapsed + ')' + alias).length <= dml.collapseSubqueriesShorterThan) {
           return '(' + collapsed + ')' + alias;
@@ -1450,7 +1457,8 @@ class Formatter {
       (this.config.dml as any).collapseShortStatements = savedCollapse;
       (this.config.dml as any).collapseStatementsShorterThan = savedThreshold;
 
-      return '(\n' + innerFormatted + '\n' + indent + ')' + alias + pivotSuffix;
+      const closeCommentStr = this.formatCloseComments(node.closeComments, bi);
+      return '(\n' + innerFormatted + closeCommentStr + '\n' + indent + ')' + alias + pivotSuffix;
     }
 
     const inner = node.inner.map(n => this.formatNode(n)).join(', ');

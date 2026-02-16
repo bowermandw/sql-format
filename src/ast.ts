@@ -272,6 +272,7 @@ export interface PivotNode {
 export interface ParenGroupNode {
   type: 'parenGroup';
   inner: SqlNode[];
+  closeComments?: Token[];
   alias?: { asToken?: Token; name: Token };
   pivot?: PivotNode;
 }

@@ -686,12 +686,24 @@ class Parser {
       this.advance(); // (
       if (this.isWord('SELECT')) {
         const subquery = this.parseSelect();
-        if (this.isType(TokenType.RightParen)) this.advance();
-        node = { type: 'parenGroup', inner: [subquery] } as ParenGroupNode;
+        let closeComments: Token[] | undefined;
+        if (this.isType(TokenType.RightParen)) {
+          const rp = this.advance();
+          if (rp.leadingComments?.length) closeComments = rp.leadingComments;
+        }
+        const pg: ParenGroupNode = { type: 'parenGroup', inner: [subquery] };
+        if (closeComments) pg.closeComments = closeComments;
+        node = pg;
       } else {
         const inner = this.parseExpressionList();
-        if (this.isType(TokenType.RightParen)) this.advance();
-        node = { type: 'parenGroup', inner } as ParenGroupNode;
+        let closeComments: Token[] | undefined;
+        if (this.isType(TokenType.RightParen)) {
+          const rp = this.advance();
+          if (rp.leadingComments?.length) closeComments = rp.leadingComments;
+        }
+        const pg: ParenGroupNode = { type: 'parenGroup', inner };
+        if (closeComments) pg.closeComments = closeComments;
+        node = pg;
       }
     } else {
       node = this.parseQualifiedName();
@@ -1332,8 +1344,14 @@ class Parser {
       this.advance(); // (
       if (this.isWord('SELECT')) {
         const subquery = this.parseSelect();
-        if (this.isType(TokenType.RightParen)) this.advance();
-        return { type: 'parenGroup', inner: [subquery] } as ParenGroupNode;
+        let closeComments: Token[] | undefined;
+        if (this.isType(TokenType.RightParen)) {
+          const rp = this.advance();
+          if (rp.leadingComments?.length) closeComments = rp.leadingComments;
+        }
+        const pg: ParenGroupNode = { type: 'parenGroup', inner: [subquery] };
+        if (closeComments) pg.closeComments = closeComments;
+        return pg;
       }
       const inner: SqlNode[] = [];
       inner.push(this.parseExpression());
@@ -1341,14 +1359,20 @@ class Parser {
         this.advance();
         inner.push(this.parseExpression());
       }
-      if (this.isType(TokenType.RightParen)) this.advance();
+      let closeComments: Token[] | undefined;
+      if (this.isType(TokenType.RightParen)) {
+        const rp = this.advance();
+        if (rp.leadingComments?.length) closeComments = rp.leadingComments;
+      }
       if (inner.length === 1) {
         // Mark the expression as having been parenthesized so the formatter
         // can re-emit parens when needed to preserve operator precedence
         (inner[0] as any)._parenthesized = true;
         return inner[0];
       }
-      return { type: 'parenGroup', inner } as ParenGroupNode;
+      const pg: ParenGroupNode = { type: 'parenGroup', inner };
+      if (closeComments) pg.closeComments = closeComments;
+      return pg;
     }
 
     // NULL keyword
