@@ -420,7 +420,7 @@ class Formatter {
         const aliased = c as any;
         if (aliased.alias) {
           const exprStr = aliased._expression
-            ? this.formatNode(aliased._expression)
+            ? this.wrapExpression(aliased._expression, baseIndent + 1)
             : aliased.parts ? aliased.parts.map((p: Token) => this.formatIdentifierPart(p)).join('.') : '';
           let effectiveWidth: number;
           if (exprStr.includes('\n')) {
@@ -438,7 +438,9 @@ class Formatter {
     }
 
     this.indent = baseIndent + 1;
-    const cols = node.columns.map(c => this.formatSelectItem(c, aliasAlignWidth));
+    const cols = node.columns.map(c => this.formatSelectItem(c, aliasAlignWidth, true));
+    // Collect leading comments for each column (e.g. commented-out columns)
+    const colComments = node.columns.map(c => this.formatLeadingComments(c));
     this.indent = baseIndent;
 
     const leadingCommas = this.config.lists.commas.placeCommasBeforeItems;
@@ -446,6 +448,7 @@ class Formatter {
     if (firstOnNewLine === 'always' || (firstOnNewLine === 'onlyIfSubsequentItems' && cols.length > 1)) {
       lines.push(selectLine);
       for (let i = 0; i < cols.length; i++) {
+        if (colComments[i]) lines.push(colComments[i].replace(/\n$/, ''));
         if (leadingCommas && i > 0) {
           lines.push(clauseIndent.slice(0, -1) + ',' + cols[i]);
         } else {
@@ -455,16 +458,21 @@ class Formatter {
     } else {
       // First item on same line as SELECT
       if (cols.length === 1) {
+        if (colComments[0]) lines.push(colComments[0].replace(/\n$/, ''));
         lines.push(selectLine + ' ' + cols[0]);
       } else {
         if (leadingCommas) {
+          if (colComments[0]) lines.push(colComments[0].replace(/\n$/, ''));
           lines.push(selectLine + ' ' + cols[0]);
           for (let i = 1; i < cols.length; i++) {
+            if (colComments[i]) lines.push(colComments[i].replace(/\n$/, ''));
             lines.push(clauseIndent.slice(0, -1) + ',' + cols[i]);
           }
         } else {
+          if (colComments[0]) lines.push(colComments[0].replace(/\n$/, ''));
           lines.push(selectLine + ' ' + cols[0] + ',');
           for (let i = 1; i < cols.length; i++) {
+            if (colComments[i]) lines.push(colComments[i].replace(/\n$/, ''));
             lines.push(clauseIndent + cols[i] + (i < cols.length - 1 ? ',' : ''));
           }
         }
@@ -552,10 +560,12 @@ class Formatter {
     return nlIdx === -1 ? s.length : s.length - nlIdx - 1;
   }
 
-  private formatSelectItem(node: SqlNode, alignWidth?: number): string {
+  private formatSelectItem(node: SqlNode, alignWidth?: number, wrap?: boolean): string {
     const aliased = node as any;
     if (aliased._expression) {
-      let s = this.formatNode(aliased._expression);
+      let s = wrap
+        ? this.wrapExpression(aliased._expression, this.indent)
+        : this.formatNode(aliased._expression);
       if (aliased.alias) {
         // For multi-line expressions the last line already contains baked-in
         // indentation, so subtract the clause indent to get the effective

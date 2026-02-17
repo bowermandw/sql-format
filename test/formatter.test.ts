@@ -525,6 +525,42 @@ GO
   });
 });
 
+describe('comments between select columns', () => {
+  it('preserves a line comment between columns', () => {
+    const sql = `SELECT
+[column1],
+-- [column2],
+[column3]
+FROM (select [column1], [column2], [column3] FROM dbo.some_table) [tbl1]`;
+    const result = formatSQL(sql);
+    expect(result).toContain('-- [column2],');
+    expect(result).toContain('[column1]');
+    expect(result).toContain('[column3]');
+  });
+
+  it('preserves a block comment between columns', () => {
+    const sql = `SELECT
+[column1],
+/* [column2], */
+[column3]
+FROM dbo.some_table WHERE [column1] = 'value_to_prevent_collapse_xxxxxxxxx'`;
+    const result = formatSQL(sql);
+    expect(result).toContain('/* [column2], */');
+  });
+
+  it('preserves multiple comments between columns', () => {
+    const sql = `SELECT
+[column1],
+-- first commented column
+-- second commented column
+[column3]
+FROM dbo.some_table WHERE [column1] = 'value_to_prevent_collapse_xxxxxxxxx'`;
+    const result = formatSQL(sql);
+    expect(result).toContain('-- first commented column');
+    expect(result).toContain('-- second commented column');
+  });
+});
+
 describe('parentheses preservation in conditions', () => {
   it('preserves parentheses around OR inside AND in ON clause', () => {
     const sql = `SELECT col1
