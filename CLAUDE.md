@@ -1,0 +1,89 @@
+# sql-format
+
+T-SQL formatter driven by RedGate-compatible JSON style configs.
+
+## Build & Test
+
+```bash
+npm run build        # tsc → dist/
+npm run test         # vitest run (98 tests)
+npm run test:watch   # vitest watch mode
+```
+
+## Run
+
+```bash
+node dist/index.js --style style1.json input.sql
+node dist/index.js input.sql                       # default config
+cat input.sql | node dist/index.js --style s.json  # stdin
+```
+
+CLI flags: `--style/-s`, `--enclose-identifiers/-e`, `--enclose-datatypes/-d`, `--insert-semicolons/-c`, `--line-ending/-l`, `--in-place/-i`, `--tokens/-t` (debug), `--ast/-a` (debug)
+
+## Architecture
+
+Three-stage pipeline: `SQL Text → Tokenizer → Token[] → Parser → AST (BatchNode) → Formatter → Formatted SQL`
+
+### Source Files
+
+| File | LOC | Purpose |
+|------|-----|---------|
+| `src/index.ts` | 205 | CLI entry point |
+| `src/tokens.ts` | 46 | Token types/interfaces |
+| `src/tokenizer.ts` | 375 | Lexer: SQL → Token[] |
+| `src/parser.ts` | 1504 | Recursive descent parser: Token[] → AST |
+| `src/ast.ts` | 302 | AST node type definitions |
+| `src/formatter.ts` | 1485 | AST → formatted SQL string |
+| `src/config.ts` | 379 | FormatConfig types, defaults, JSON loader |
+| `src/casing.ts` | 155 | Keyword/function/datatype casing logic |
+
+### Test Files
+
+- `test/tokenizer.test.ts`, `test/parser.test.ts`, `test/formatter.test.ts`
+
+## Key Public Functions
+
+- `tokenize(input): Token[]` — lexer
+- `attachComments(tokens): Token[]` — strips whitespace, attaches comments to adjacent tokens
+- `parse(tokens): BatchNode` — parser
+- `format(ast, config): string` — formatter
+- `loadConfig(filePath): FormatConfig` — loads JSON style config with defaults
+
+## AST Node Types (src/ast.ts)
+
+- **Root:** `BatchNode` (contains batches separated by GO)
+- **DML:** `SelectNode`, `InsertNode`, `UpdateNode`, `DeleteNode`
+- **DDL:** `CreateTableNode`, `DropTableNode`, `CreateProcedureNode`, `ColumnDefNode`, `ConstraintNode`
+- **Query parts:** `CteNode`, `JoinNode`, `WhereNode`, `GroupByNode`, `OrderByNode`, `HavingNode`
+- **Control flow:** `BeginEndNode`, `IfElseNode`, `CaseNode`, `DeclareNode`, `SetNode`, `PrintNode`, `ReturnNode`
+- **Expressions:** `ExpressionNode` (binary), `FunctionCallNode`, `InExpressionNode`, `BetweenNode`, `ExistsNode`
+- **Containers:** `ParenGroupNode` (subqueries/parens with optional PIVOT/alias), `IdentifierNode`, `LiteralNode`, `RawTokenNode`
+
+## FormatConfig Sections (src/config.ts)
+
+`whitespace`, `lists`, `parentheses`, `casing`, `identifiers`, `dataTypes`, `dml`, `ddl`, `controlFlow`, `cte`, `variables`, `joinStatements`, `insertStatements`, `caseExpressions`, `operators`
+
+Key settings for line wrapping:
+- `whitespace.wrapLongLines` / `whitespace.wrapLinesLongerThan` — general expression wrapping
+- `dml.collapseShortStatements` / `collapseStatementsShorterThan` — collapse short SELECTs to one line
+- `dml.collapseShortSubqueries` / `collapseSubqueriesShorterThan` — collapse short subqueries
+- `caseExpressions.collapseShortCaseExpressions` / `collapseCaseExpressionsShorterThan`
+- `parentheses.collapseShortParenthesisContents` / `collapseParenthesesShorterThan`
+
+## Formatter Key Methods (src/formatter.ts)
+
+- `formatSelect()` — SELECT formatting with collapse check, column list, clause placement
+- `formatSelectItem()` — individual column with alias alignment; uses `wrapExpression` in expanded mode
+- `formatParenGroup()` — subquery detection & collapse/expand logic
+- `formatCase()` — CASE expression collapse/expand
+- `wrapExpression()` — splits binary expressions at operator boundaries when line exceeds max
+- `collapseSelect()` / `collapseJoin()` / `collapseCase()` — generate single-line versions
+
+## Patterns
+
+- **Recursive descent parser** with `peek()`, `isWord()`, `matchWords()` lookahead
+- **Visitor-style formatter** with `formatX()` methods per node type
+- **Indent tracking** via `this.indent` level (incremented/decremented around nested structures)
+- **Collapse-then-expand pattern:** try single-line version, check length threshold, fall back to expanded multi-line
+- Comments attached to tokens as `leadingComments`/`trailingComment`/`trailingComments`
+- T-SQL dialect focused (SQL Server)
