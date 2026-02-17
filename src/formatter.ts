@@ -414,14 +414,29 @@ class Formatter {
     if (this.config.lists.alignAliases) {
       let maxExprWidth = 0;
       const clauseIndentLen = this.indentStr(baseIndent + 1).length;
+      const indentLevel = baseIndent + 1;
       const savedIndent = this.indent;
-      this.indent = baseIndent + 1;
+      this.indent = indentLevel;
       for (const c of node.columns) {
         const aliased = c as any;
         if (aliased.alias) {
-          const exprStr = aliased._expression
-            ? this.wrapExpression(aliased._expression, baseIndent + 1)
+          let exprStr = aliased._expression
+            ? this.wrapExpression(aliased._expression, indentLevel)
             : aliased.parts ? aliased.parts.map((p: Token) => this.formatIdentifierPart(p)).join('.') : '';
+          // If the expression + alias would overflow, re-format with CASE
+          // collapsing disabled so the width reflects the expanded form.
+          if (aliased._expression && !exprStr.includes('\n') && this.config.whitespace.wrapLongLines) {
+            const aliasExtra = aliased.alias.asToken
+              ? 1 + 2 + 1 + aliased.alias.name.value.length  // ' AS [name]'
+              : 1 + aliased.alias.name.value.length;          // ' [name]'
+            const lineLen = exprStr.length + aliasExtra + indentLevel * this.tabStr.length;
+            if (lineLen > this.config.whitespace.wrapLinesLongerThan) {
+              const savedCaseCollapse = this.config.caseExpressions.collapseShortCaseExpressions;
+              (this.config.caseExpressions as any).collapseShortCaseExpressions = false;
+              exprStr = this.wrapExpression(aliased._expression, indentLevel);
+              (this.config.caseExpressions as any).collapseShortCaseExpressions = savedCaseCollapse;
+            }
+          }
           let effectiveWidth: number;
           if (exprStr.includes('\n')) {
             // Last line already contains indentation — subtract it
@@ -560,6 +575,23 @@ class Formatter {
     return nlIdx === -1 ? s.length : s.length - nlIdx - 1;
   }
 
+  private appendSelectItemAlias(s: string, alias: { asToken?: Token; name: Token }, alignWidth?: number): string {
+    const isMultiLine = s.includes('\n');
+    const lastLen = this.lastLineLength(s);
+    const effectiveLen = isMultiLine
+      ? lastLen - this.indentStr().length
+      : lastLen;
+    if (alignWidth !== undefined && alignWidth > effectiveLen) {
+      s = s + ' '.repeat(alignWidth - effectiveLen);
+    }
+    if (alias.asToken) {
+      s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(alias.name);
+    } else {
+      s += ' ' + this.formatIdentifierPart(alias.name);
+    }
+    return s;
+  }
+
   private formatSelectItem(node: SqlNode, alignWidth?: number, wrap?: boolean): string {
     const aliased = node as any;
     if (aliased._expression) {
@@ -567,21 +599,21 @@ class Formatter {
         ? this.wrapExpression(aliased._expression, this.indent)
         : this.formatNode(aliased._expression);
       if (aliased.alias) {
-        // For multi-line expressions the last line already contains baked-in
-        // indentation, so subtract the clause indent to get the effective
-        // width comparable to alignWidth (which is indent-relative).
-        const isMultiLine = s.includes('\n');
-        const lastLen = this.lastLineLength(s);
-        const effectiveLen = isMultiLine
-          ? lastLen - this.indentStr().length
-          : lastLen;
-        if (alignWidth !== undefined && alignWidth > effectiveLen) {
-          s = s + ' '.repeat(alignWidth - effectiveLen);
-        }
-        if (aliased.alias.asToken) {
-          s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(aliased.alias.name);
-        } else {
-          s += ' ' + this.formatIdentifierPart(aliased.alias.name);
+        s = this.appendSelectItemAlias(s, aliased.alias, alignWidth);
+      }
+      // If the full line (expression + alias) still exceeds max width and the
+      // expression stayed on one line, re-format with CASE collapsing disabled
+      // so the CASE expands to multiple lines.
+      if (wrap && !s.includes('\n') && this.config.whitespace.wrapLongLines) {
+        const lineLen = s.length + this.indent * this.tabStr.length;
+        if (lineLen > this.config.whitespace.wrapLinesLongerThan) {
+          const savedCaseCollapse = this.config.caseExpressions.collapseShortCaseExpressions;
+          (this.config.caseExpressions as any).collapseShortCaseExpressions = false;
+          s = this.wrapExpression(aliased._expression, this.indent);
+          (this.config.caseExpressions as any).collapseShortCaseExpressions = savedCaseCollapse;
+          if (aliased.alias) {
+            s = this.appendSelectItemAlias(s, aliased.alias, alignWidth);
+          }
         }
       }
       return s;

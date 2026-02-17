@@ -561,6 +561,27 @@ FROM dbo.some_table WHERE [column1] = 'value_to_prevent_collapse_xxxxxxxxx'`;
   });
 });
 
+describe('CASE expression wrapping in SELECT columns', () => {
+  it('expands CASE when line with alias exceeds wrapLinesLongerThan', () => {
+    const sql = `SELECT
+[column1],
+CASE WHEN [aa_bbb_cccc] BETWEEN -0.1 AND 0.1 THEN 0 ELSE [aa_bbb_cccc] END AS [aa_bbb_cccc],
+[column3]
+FROM (SELECT [column1], [aa_bbb_cccc], [column3] FROM dbo.some_table) tbl1`;
+    const result = formatSQL(sql, {
+      whitespace: { ...DEFAULT_CONFIG.whitespace, wrapLinesLongerThan: 78 },
+      caseExpressions: { ...DEFAULT_CONFIG.caseExpressions, collapseCaseExpressionsShorterThan: 78 },
+    } as any);
+    // CASE should expand to multiple lines since the full line with alias exceeds 78
+    expect(result).toContain('CASE\n');
+    expect(result).toContain('END AS [aa_bbb_cccc]');
+    // Verify no line exceeds 78 characters
+    for (const line of result.split('\n')) {
+      expect(line.length).toBeLessThanOrEqual(78);
+    }
+  });
+});
+
 describe('parentheses preservation in conditions', () => {
   it('preserves parentheses around OR inside AND in ON clause', () => {
     const sql = `SELECT col1
