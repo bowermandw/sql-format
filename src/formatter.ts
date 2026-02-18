@@ -317,7 +317,12 @@ class Formatter {
         return 0;
       }));
     }
-    const colStrs = node.columns.map(c => colIndent + this.formatColumnDef(c as ColumnDefNode, nameWidth));
+    const colStrs = node.columns.map(c => {
+      if (c.type === 'constraint') {
+        return colIndent + this.formatConstraint(c as ConstraintNode);
+      }
+      return colIndent + this.formatColumnDef(c as ColumnDefNode, nameWidth);
+    });
     parts.push(colStrs.join(',\n'));
     parts.push(baseIndent + ')');
     if (node.onFilegroup && node.onFilegroup.length > 0) {
