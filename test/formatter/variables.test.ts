@@ -45,3 +45,53 @@ describe('variables.alignDataTypesAndValues', () => {
     expect(result).toContain("= 'hello'");
   });
 });
+
+// ---- DECLARE table variables ----
+
+describe('DECLARE table variable', () => {
+  it('formats DECLARE @t AS TABLE with columns', () => {
+    const result = formatSQL('DECLARE @table_variable AS TABLE ( column_1 VARCHAR(50))');
+    expect(result).toContain('DECLARE @table_variable AS TABLE');
+    expect(result).toContain('column_1 VARCHAR(50)');
+    expect(result).toContain('(');
+    expect(result).toContain(')');
+  });
+
+  it('formats DECLARE @t TABLE without AS keyword', () => {
+    const result = formatSQL('DECLARE @t TABLE (id INT, name VARCHAR(50))');
+    expect(result).toContain('DECLARE @t TABLE');
+    expect(result).toContain('id INT');
+    expect(result).toContain('name VARCHAR(50)');
+  });
+
+  it('formats table variable with constraints', () => {
+    const result = formatSQL('DECLARE @t TABLE (id INT NOT NULL, name VARCHAR(50), CONSTRAINT pk_t PRIMARY KEY (id))');
+    expect(result).toContain('CONSTRAINT pk_t PRIMARY KEY (id)');
+  });
+
+  it('table variable with column alignment', () => {
+    const result = formatSQL('DECLARE @t TABLE (id INT NOT NULL, longername VARCHAR(255))', {
+      ddl: { alignDataTypesAndConstraints: true },
+    });
+    const lines = result.split('\n').filter(l => l.trim().startsWith('id') || l.trim().startsWith('longername'));
+    expect(lines.length).toBe(2);
+    // Data types should align
+    const intPos = lines[0].indexOf('INT');
+    const varcharPos = lines[1].indexOf('VARCHAR');
+    expect(intPos).toBe(varcharPos);
+  });
+
+  it('DECLARE table variable is idempotent', () => {
+    const sql = 'DECLARE @table_variable AS TABLE ( column_1 VARCHAR(50), column_2 INT)';
+    const first = formatSQL(sql);
+    const second = formatSQL(first);
+    expect(first).toBe(second);
+  });
+
+  it('DECLARE table variable without AS is idempotent', () => {
+    const sql = 'DECLARE @t TABLE (id INT NOT NULL, name VARCHAR(50))';
+    const first = formatSQL(sql);
+    const second = formatSQL(first);
+    expect(first).toBe(second);
+  });
+});

@@ -167,7 +167,7 @@ export interface BeginEndNode {
 export interface DeclareNode {
   type: 'declare';
   token: Token;
-  variables: { name: Token; dataType: SqlNode; default?: SqlNode }[];
+  variables: { name: Token; asToken?: Token; dataType: SqlNode; default?: SqlNode; tableColumns?: (ColumnDefNode | ConstraintNode)[] }[];
 }
 
 export interface SetNode {
@@ -203,6 +203,7 @@ export interface FunctionCallNode {
   name: SqlNode;
   args: SqlNode[];
   overClause?: SqlNode;
+  alias?: { asToken?: Token; name: Token };
 }
 
 export interface InExpressionNode {

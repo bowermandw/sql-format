@@ -1032,3 +1032,44 @@ CONSTRAINT pk_table_name_1 PRIMARY KEY (id)
     expect(first).toBe(second);
   });
 });
+
+// ---- CROSS APPLY / OUTER APPLY ----
+
+describe('CROSS APPLY / OUTER APPLY', () => {
+  it('formats CROSS APPLY with table-valued function', () => {
+    const sql = `SELECT * FROM (SELECT [json_column] FROM dbo.table_name_1) [tbl] CROSS APPLY OPENJSON([json_column]) AS [w]`;
+    const result = formatSQL(sql);
+    expect(result).toContain('CROSS APPLY');
+    expect(result).toContain('OPENJSON([json_column])');
+    expect(result).toContain('AS [w]');
+  });
+
+  it('formats OUTER APPLY with subquery', () => {
+    const sql = `SELECT * FROM dbo.t1 OUTER APPLY (SELECT TOP 1 col1 FROM dbo.t2 WHERE t2.id = t1.id) AS x`;
+    const result = formatSQL(sql);
+    expect(result).toContain('OUTER APPLY');
+    expect(result).toContain('AS x');
+  });
+
+  it('formats CROSS APPLY with STRING_SPLIT', () => {
+    const sql = `SELECT * FROM dbo.t1 CROSS APPLY STRING_SPLIT(col1, ',') AS s`;
+    const result = formatSQL(sql);
+    expect(result).toContain('CROSS APPLY');
+    expect(result).toContain("STRING_SPLIT(col1, ',')");
+    expect(result).toContain('AS s');
+  });
+
+  it('CROSS APPLY is idempotent', () => {
+    const sql = `SELECT * FROM (SELECT [json_column] FROM dbo.table_name_1) [tbl] CROSS APPLY OPENJSON([json_column]) AS [w]`;
+    const first = formatSQL(sql);
+    const second = formatSQL(first);
+    expect(first).toBe(second);
+  });
+
+  it('OUTER APPLY is idempotent', () => {
+    const sql = `SELECT * FROM dbo.t1 OUTER APPLY (SELECT TOP 1 col1 FROM dbo.t2 WHERE t2.id = t1.id) AS x`;
+    const first = formatSQL(sql);
+    const second = formatSQL(first);
+    expect(first).toBe(second);
+  });
+});

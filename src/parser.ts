@@ -706,19 +706,35 @@ class Parser {
         node = pg;
       }
     } else {
-      node = this.parseQualifiedName();
+      const name = this.parseQualifiedName();
+      // Table-valued function call: OPENJSON(...), STRING_SPLIT(...), etc.
+      if (this.isType(TokenType.LeftParen) && name.type === 'identifier') {
+        this.advance(); // (
+        const args: SqlNode[] = [];
+        if (!this.isType(TokenType.RightParen)) {
+          args.push(this.parseExpression());
+          while (this.isType(TokenType.Comma)) {
+            this.advance();
+            args.push(this.parseExpression());
+          }
+        }
+        if (this.isType(TokenType.RightParen)) this.advance();
+        node = { type: 'functionCall', name, args } as FunctionCallNode;
+      } else {
+        node = name;
+      }
     }
 
     // Table alias
     if (this.isWord('AS')) {
       const asToken = this.advance();
       const aliasName = this.advance();
-      if (node.type === 'identifier' || node.type === 'parenGroup') {
+      if (node.type === 'identifier' || node.type === 'parenGroup' || node.type === 'functionCall') {
         return { ...node, alias: { asToken, name: aliasName } };
       }
     } else if ((this.isWord() || this.isType(TokenType.QuotedIdentifier)) && !this.isClauseKeyword() && !this.isJoinKeyword()) {
       const name = this.advance();
-      if (node.type === 'identifier' || node.type === 'parenGroup') {
+      if (node.type === 'identifier' || node.type === 'parenGroup' || node.type === 'functionCall') {
         return { ...node, alias: { name } };
       }
     }
@@ -730,21 +746,24 @@ class Parser {
     const val = this.current().value.toUpperCase();
     if (val === 'JOIN') return true;
     if (['INNER', 'LEFT', 'RIGHT', 'FULL', 'CROSS'].includes(val)) {
-      // Look ahead for JOIN or OUTER JOIN
+      // Look ahead for JOIN, OUTER JOIN, or APPLY
       let i = 1;
       if (this.isWordAt(i, 'OUTER')) i++;
-      return this.isWordAt(i, 'JOIN');
+      return this.isWordAt(i, 'JOIN') || this.isWordAt(i, 'APPLY');
     }
+    // OUTER APPLY without CROSS prefix
+    if (val === 'OUTER' && this.isWordAt(1, 'APPLY')) return true;
     return false;
   }
 
   private parseJoin(): JoinNode {
     const joinKeywords: Token[] = [];
 
-    // Collect join type keywords
-    while (this.isWord() && ['INNER', 'LEFT', 'RIGHT', 'FULL', 'CROSS', 'OUTER', 'JOIN'].includes(this.current().value.toUpperCase())) {
+    // Collect join type keywords (JOIN or APPLY terminates the keyword sequence)
+    while (this.isWord() && ['INNER', 'LEFT', 'RIGHT', 'FULL', 'CROSS', 'OUTER', 'JOIN', 'APPLY'].includes(this.current().value.toUpperCase())) {
       joinKeywords.push(this.advance());
-      if (joinKeywords[joinKeywords.length - 1].value.toUpperCase() === 'JOIN') break;
+      const lastKw = joinKeywords[joinKeywords.length - 1].value.toUpperCase();
+      if (lastKw === 'JOIN' || lastKw === 'APPLY') break;
     }
 
     const table = this.parseTableReference();
@@ -1013,17 +1032,39 @@ class Parser {
 
   private parseDeclare(): DeclareNode {
     const token = this.advance(); // DECLARE
-    const variables: { name: Token; dataType: SqlNode; default?: SqlNode }[] = [];
+    const variables: DeclareNode['variables'] = [];
 
     const parseVar = () => {
       const name = this.advance(); // @var
+      let asToken: Token | undefined;
+      if (this.isWord('AS')) {
+        asToken = this.advance();
+      }
+      // TABLE variable: DECLARE @t [AS] TABLE (columns...)
+      if (this.isWord('TABLE') && this.peek(1).type === TokenType.LeftParen) {
+        const dataType: SqlNode = { type: 'identifier', parts: [this.advance()] } as IdentifierNode; // TABLE
+        const tableColumns: any[] = [];
+        this.advance(); // (
+        while (!this.isEOF() && !this.isType(TokenType.RightParen)) {
+          if (this.isType(TokenType.Comma)) { this.advance(); continue; }
+          if (this.isWord('CONSTRAINT') || this.isWord('PRIMARY') || this.isWord('FOREIGN') ||
+              this.isWord('UNIQUE') || this.isWord('CHECK')) {
+            tableColumns.push(this.parseTableConstraint());
+          } else {
+            tableColumns.push(this.parseColumnDef());
+          }
+        }
+        if (this.isType(TokenType.RightParen)) this.advance();
+        variables.push({ name, asToken, dataType, tableColumns });
+        return;
+      }
       const dataType = this.parseDataType();
       let defaultVal: SqlNode | undefined;
       if (this.isType(TokenType.Equals)) {
         this.advance();
         defaultVal = this.parseExpression();
       }
-      variables.push({ name, dataType, default: defaultVal });
+      variables.push({ name, asToken, dataType, default: defaultVal });
     };
 
     parseVar();

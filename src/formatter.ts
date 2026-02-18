@@ -1010,7 +1010,32 @@ class Formatter {
     }
     const vars = node.variables.map(v => {
       const name = nameWidth > 0 ? this.padToWidth(v.name.value, nameWidth) : v.name.value;
-      let s = name + ' ' + this.formatDataType(v.dataType);
+      const asPrefix = v.asToken ? this.kw('AS') + ' ' : '';
+      // Table variable: DECLARE @t AS TABLE (columns...)
+      if (v.tableColumns) {
+        const baseIndent = this.indentStr();
+        const colIndent = this.indentStr(this.indent + 1);
+        let colNameWidth = 0;
+        if (this.config.ddl.alignDataTypesAndConstraints && v.tableColumns.length > 1) {
+          colNameWidth = Math.max(...v.tableColumns.map(c => {
+            if (c.type === 'columnDef') {
+              return this.formatIdentifierPart((c as ColumnDefNode).name).length;
+            }
+            return 0;
+          }));
+        }
+        const colStrs = v.tableColumns.map(c => {
+          if (c.type === 'constraint') {
+            return colIndent + this.formatConstraint(c as ConstraintNode);
+          }
+          return colIndent + this.formatColumnDef(c as ColumnDefNode, colNameWidth);
+        });
+        return name + ' ' + asPrefix + this.kw('TABLE') + '\n' +
+          baseIndent + '(\n' +
+          colStrs.join(',\n') + '\n' +
+          baseIndent + ')';
+      }
+      let s = name + ' ' + asPrefix + this.formatDataType(v.dataType);
       if (v.default) s += ' = ' + this.formatNode(v.default);
       return s;
     });
@@ -1216,6 +1241,7 @@ class Formatter {
        inline.length + indentWidth > this.config.whitespace.wrapLinesLongerThan &&
        node.args.length > 1);
 
+    let result: string;
     if (needsExpand) {
       const innerIndent = this.indentStr(this.indent + 1);
       const outerIndent = this.indentStr(this.indent);
@@ -1228,10 +1254,22 @@ class Formatter {
         lines[lines.length - 1] += comma;
         return lines.join('\n');
       });
-      return `${name} (\n${expanded.join('\n')}\n${outerIndent})`;
+      result = `${name} (\n${expanded.join('\n')}\n${outerIndent})`;
+    } else {
+      result = inline;
     }
 
-    return inline;
+    // Table-valued function alias (e.g., OPENJSON(...) AS [w])
+    const alias = node.alias;
+    if (alias) {
+      if (alias.asToken) {
+        result += ' ' + this.kw(alias.asToken.value) + ' ' + this.formatIdentifierPart(alias.name);
+      } else {
+        result += ' ' + this.formatIdentifierPart(alias.name);
+      }
+    }
+
+    return result;
   }
 
   // --- Data types ---
