@@ -6,6 +6,9 @@ import { caseWord, categorizeWord } from './casing';
 export function format(ast: BatchNode, config: FormatConfig): string {
   const f = new Formatter(config);
   let result = f.formatBatch(ast);
+  // Normalize all line endings to \n first (block comments may retain \r\n from input),
+  // then convert to \r\n if configured for CRLF output.
+  result = result.replace(/\r\n/g, '\n');
   if (config.whitespace.lineEnding === 'crlf') {
     result = result.replace(/\n/g, '\r\n');
   }

@@ -725,6 +725,20 @@ HAVING COUNT(*) > 1`;
     expect(result).toContain('-- comment before FROM');
     expect(result).not.toContain('\r');
   });
+
+  it('does not insert extra blank lines in flowerbox comment with CRLF input', () => {
+    const sql = "/********************\r\nLine1\r\nLine2\r\nLine3\r\n********************/\r\n";
+    const result = formatSQL(sql);
+    expect(result).toContain("/********************\nLine1\nLine2\nLine3\n********************/");
+    expect(result).not.toContain('\r');
+  });
+
+  it('does not insert extra blank lines in flowerbox comment with CRLF output', () => {
+    const sql = "/********************\r\nLine1\r\nLine2\r\nLine3\r\n********************/\r\n";
+    const result = formatSQL(sql, { whitespace: { lineEnding: 'crlf' } });
+    expect(result).toContain("/********************\r\nLine1\r\nLine2\r\nLine3\r\n********************/");
+    expect(result).not.toContain('\r\r');
+  });
 });
 
 describe('comments between select columns', () => {
