@@ -971,4 +971,50 @@ CONSTRAINT pk_table_name_1 PRIMARY KEY (id)
     const second = formatSQL(first);
     expect(first).toBe(second);
   });
+
+  it('encloses column names and constraint identifiers with brackets', () => {
+    const sql = `CREATE TABLE dbo.table_name_1 (
+id INT IDENTITY(1,1) NOT NULL,
+column_1 VARCHAR(50) NOT NULL,
+column_2 VARCHAR(255) NOT NULL,
+CONSTRAINT pk_table_name_1 PRIMARY KEY (id)
+)`;
+    const result = formatSQL(sql, {
+      identifiers: { encloseIdentifiers: 'withBrackets', encloseIdentifiersScope: 'userDefined', alwaysBracketReservedWordIdentifiers: true },
+    });
+    expect(result).toContain('[dbo].[table_name_1]');
+    expect(result).toContain('[id]');
+    expect(result).toContain('[column_1]');
+    expect(result).toContain('[column_2]');
+    expect(result).toContain('CONSTRAINT [pk_table_name_1] PRIMARY KEY ([id])');
+  });
+
+  it('strips brackets from column names with withoutBrackets', () => {
+    const sql = `CREATE TABLE [dbo].[table_name_1] (
+[id] INT NOT NULL,
+[column_1] VARCHAR(50) NOT NULL,
+CONSTRAINT [pk_table_name_1] PRIMARY KEY ([id])
+)`;
+    const result = formatSQL(sql, {
+      identifiers: { encloseIdentifiers: 'withoutBrackets', encloseIdentifiersScope: 'userDefined', alwaysBracketReservedWordIdentifiers: false },
+    });
+    expect(result).toContain('dbo.table_name_1');
+    expect(result).not.toMatch(/\[id\]/);
+    expect(result).not.toMatch(/\[column_1\]/);
+    expect(result).toContain('CONSTRAINT pk_table_name_1 PRIMARY KEY (id)');
+  });
+
+  it('CREATE TABLE with brackets is idempotent', () => {
+    const sql = `CREATE TABLE dbo.table_name_1 (
+id INT IDENTITY(1,1) NOT NULL,
+column_1 VARCHAR(50) NOT NULL,
+CONSTRAINT pk_table_name_1 PRIMARY KEY (id)
+)`;
+    const config = {
+      identifiers: { encloseIdentifiers: 'withBrackets', encloseIdentifiersScope: 'userDefined', alwaysBracketReservedWordIdentifiers: true },
+    };
+    const first = formatSQL(sql, config);
+    const second = formatSQL(first, config);
+    expect(first).toBe(second);
+  });
 });

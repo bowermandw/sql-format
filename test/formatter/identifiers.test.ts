@@ -67,10 +67,17 @@ describe('identifiers.encloseIdentifiers', () => {
       expect(result).toContain('[id]');
     });
 
-    it('brackets CREATE TABLE name', () => {
-      // Note: CREATE TABLE column names use tokenValue (casing only), not formatIdentifierPart
+    it('brackets CREATE TABLE name and column names', () => {
       const result = formatSQL('CREATE TABLE dbo.t (id INT, name VARCHAR(50))', withBrackets);
       expect(result).toContain('[dbo].[t]');
+      expect(result).toContain('[id]');
+      expect(result).toContain('[name]');
+    });
+
+    it('brackets CREATE TABLE constraint name and column references', () => {
+      const result = formatSQL('CREATE TABLE dbo.t (id INT NOT NULL, CONSTRAINT pk_t PRIMARY KEY (id))', withBrackets);
+      expect(result).toContain('[pk_t]');
+      expect(result).toContain('PRIMARY KEY ([id])');
     });
   });
 

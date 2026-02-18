@@ -312,7 +312,7 @@ class Formatter {
     if (this.config.ddl.alignDataTypesAndConstraints && node.columns.length > 1) {
       nameWidth = Math.max(...node.columns.map(c => {
         if (c.type === 'columnDef') {
-          return this.tokenValue((c as ColumnDefNode).name).length;
+          return this.formatIdentifierPart((c as ColumnDefNode).name).length;
         }
         return 0;
       }));
@@ -332,7 +332,7 @@ class Formatter {
   }
 
   private formatColumnDef(node: ColumnDefNode, nameWidth: number = 0): string {
-    const colName = this.tokenValue(node.name);
+    const colName = this.formatIdentifierPart(node.name);
     const name = nameWidth > 0 ? this.padToWidth(colName, nameWidth) : colName;
     let s = `${name} ${this.formatDataType(node.dataType)}`;
     for (const c of node.constraints) {
@@ -353,7 +353,44 @@ class Formatter {
   // --- CONSTRAINT ---
 
   private formatConstraint(node: ConstraintNode): string {
-    return node.tokens.map(t => this.kw(t.value)).join(' ');
+    const parts: string[] = [];
+    for (let i = 0; i < node.tokens.length; i++) {
+      const t = node.tokens[i];
+      if (t.type === TokenType.LeftParen) {
+        // Remove trailing space before '(' and attach directly
+        parts.push('(');
+      } else if (t.type === TokenType.RightParen) {
+        parts.push(')');
+      } else if (t.type === TokenType.Comma) {
+        parts.push(',');
+      } else if (t.type === TokenType.Word || t.type === TokenType.QuotedIdentifier) {
+        const category = t.type === TokenType.QuotedIdentifier ? 'identifier' : categorizeWord(t.value);
+        if (category === 'identifier') {
+          parts.push(this.formatIdentifierPart(t));
+        } else {
+          parts.push(this.kw(t.value));
+        }
+      } else {
+        parts.push(t.value);
+      }
+    }
+    // Join with spaces but collapse around commas and closing parens
+    let result = '';
+    for (const part of parts) {
+      if (part === ')') {
+        result = result.trimEnd();
+        result += ')';
+      } else if (part === ',') {
+        result = result.trimEnd();
+        result += ', ';
+      } else {
+        if (result.length > 0 && !result.endsWith(' ') && !result.endsWith('(')) {
+          result += ' ';
+        }
+        result += part;
+      }
+    }
+    return result.trimEnd();
   }
 
   // --- Raw Token (EXEC, fallback statements) ---
