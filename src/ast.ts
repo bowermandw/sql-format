@@ -203,6 +203,7 @@ export interface FunctionCallNode {
   name: SqlNode;
   args: SqlNode[];
   overClause?: SqlNode;
+  closeComments?: Token[];
   alias?: { asToken?: Token; name: Token };
 }
 

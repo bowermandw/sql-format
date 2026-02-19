@@ -1248,7 +1248,9 @@ class Formatter {
 
     // Check if the inline version exceeds the wrap limit or any arg is multi-line
     const indentWidth = this.indent * this.tabStr.length;
-    const needsExpand = formattedArgs.some(a => a.includes('\n')) ||
+    const hasCloseComments = node.closeComments?.length;
+    const needsExpand = hasCloseComments ||
+      formattedArgs.some(a => a.includes('\n')) ||
       (this.config.whitespace.wrapLongLines &&
        inline.length + indentWidth > this.config.whitespace.wrapLinesLongerThan &&
        node.args.length > 1);
@@ -1269,9 +1271,15 @@ class Formatter {
         lines[lines.length - 1] += comma;
         return lines.join('\n');
       });
-      result = `${name} (\n${expanded.join('\n')}\n${outerIndent})`;
+      const closeCommentStr = this.formatCloseComments(node.closeComments, this.indent);
+      result = `${name} (\n${expanded.join('\n')}${closeCommentStr}\n${outerIndent})`;
     } else {
       result = inline;
+    }
+
+    // OVER clause: SUM(...) OVER (PARTITION BY ...)
+    if (node.overClause) {
+      result += ' ' + this.formatOverClause(node.overClause);
     }
 
     // Table-valued function alias (e.g., OPENJSON(...) AS [w])
@@ -1285,6 +1293,36 @@ class Formatter {
     }
 
     return result;
+  }
+
+  /** Format an OVER clause, e.g. OVER (PARTITION BY col ORDER BY col) */
+  private formatOverClause(node: SqlNode): string {
+    if (node.type === 'parenGroup') {
+      const pg = node as ParenGroupNode;
+      // First element is the OVER keyword rawToken, rest is the clause content
+      // Build output by joining keywords with space and expressions with commas
+      let result = this.kw('OVER') + ' (';
+      let first = true;
+      for (let i = 1; i < pg.inner.length; i++) {
+        const n = pg.inner[i];
+        const isKeyword = n.type === 'rawToken' && /^(PARTITION BY|ORDER BY|ROWS|RANGE|GROUPS)\b/i.test((n as RawTokenNode).token.value);
+        if (isKeyword) {
+          if (!first) result += ' ';
+          result += this.kw((n as RawTokenNode).token.value.toUpperCase());
+        } else {
+          if (!first && !isKeywordAt(pg.inner, i - 1)) {
+            result += ', ';
+          } else {
+            if (!first) result += ' ';
+          }
+          result += this.formatNode(n);
+        }
+        first = false;
+      }
+      result += ')';
+      return result;
+    }
+    return this.formatNode(node);
   }
 
   /** Check if a function arg is the AS keyword (used in CAST/TRY_PARSE etc.) */
@@ -1610,6 +1648,13 @@ class Formatter {
     const inner = node.inner.map(n => this.formatNode(n)).join(', ');
     return `(${inner})` + this.formatParenGroupAlias(node) + pivotSuffix;
   }
+}
+
+/** Check if the inner node at a given index is an OVER-clause keyword */
+function isKeywordAt(inner: SqlNode[], idx: number): boolean {
+  if (idx < 0 || idx >= inner.length) return false;
+  const n = inner[idx];
+  return n.type === 'rawToken' && /^(PARTITION BY|ORDER BY|ROWS|RANGE|GROUPS)\b/i.test((n as RawTokenNode).token.value);
 }
 
 /** Strip [brackets] or "double quotes" from a quoted identifier, returning the inner name. */

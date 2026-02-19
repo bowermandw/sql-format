@@ -718,8 +718,14 @@ class Parser {
             args.push(this.parseExpression());
           }
         }
-        if (this.isType(TokenType.RightParen)) this.advance();
-        node = { type: 'functionCall', name, args } as FunctionCallNode;
+        let tvfCloseComments: Token[] | undefined;
+        if (this.isType(TokenType.RightParen)) {
+          const rp = this.advance();
+          if (rp.leadingComments?.length) tvfCloseComments = rp.leadingComments;
+        }
+        const tvfNode: FunctionCallNode = { type: 'functionCall', name, args };
+        if (tvfCloseComments) tvfNode.closeComments = tvfCloseComments;
+        node = tvfNode;
       } else {
         node = name;
       }
@@ -1466,14 +1472,61 @@ class Parser {
             args.push(this.parseDataType());
           }
         }
-        if (this.isType(TokenType.RightParen)) this.advance();
-        return { type: 'functionCall', name, args } as FunctionCallNode;
+        let closeComments: Token[] | undefined;
+        if (this.isType(TokenType.RightParen)) {
+          const rp = this.advance();
+          if (rp.leadingComments?.length) closeComments = rp.leadingComments;
+        }
+        const fnNode: FunctionCallNode = { type: 'functionCall', name, args };
+        if (closeComments) fnNode.closeComments = closeComments;
+        // OVER clause: SUM(...) OVER (PARTITION BY ... ORDER BY ...)
+        if (this.isWord('OVER')) {
+          fnNode.overClause = this.parseOverClause();
+        }
+        return fnNode;
       }
       return name;
     }
 
     // Fallback
     return { type: 'rawToken', token: this.advance() } as RawTokenNode;
+  }
+
+  // --- OVER clause ---
+
+  private parseOverClause(): SqlNode {
+    const overToken = this.advance(); // OVER
+    if (!this.isType(TokenType.LeftParen)) {
+      return { type: 'rawToken', token: overToken } as RawTokenNode;
+    }
+    this.advance(); // (
+    const inner: SqlNode[] = [];
+    // Store OVER keyword as first element
+    inner.push({ type: 'rawToken', token: overToken } as RawTokenNode);
+
+    while (!this.isEOF() && !this.isType(TokenType.RightParen)) {
+      if (this.isWord('PARTITION') || this.isWord('ORDER')) {
+        const keyword = this.advance();
+        const byToken = this.isWord('BY') ? this.advance() : undefined;
+        const combinedValue = byToken ? keyword.value + ' ' + byToken.value : keyword.value;
+        inner.push({ type: 'rawToken', token: { ...keyword, value: combinedValue } } as RawTokenNode);
+        // Parse the expression list
+        inner.push(this.parseExpression());
+        while (this.isType(TokenType.Comma)) {
+          this.advance();
+          inner.push(this.parseExpression());
+        }
+      } else if (this.isWord('ROWS') || this.isWord('RANGE') || this.isWord('GROUPS')) {
+        // Window frame clause - consume tokens until closing paren
+        while (!this.isEOF() && !this.isType(TokenType.RightParen)) {
+          inner.push({ type: 'rawToken', token: this.advance() } as RawTokenNode);
+        }
+      } else {
+        inner.push({ type: 'rawToken', token: this.advance() } as RawTokenNode);
+      }
+    }
+    if (this.isType(TokenType.RightParen)) this.advance();
+    return { type: 'parenGroup', inner } as ParenGroupNode;
   }
 
   // --- CASE ---
