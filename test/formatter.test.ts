@@ -1073,3 +1073,64 @@ describe('CROSS APPLY / OUTER APPLY', () => {
     expect(first).toBe(second);
   });
 });
+
+// ---- Leading comma input reformatting ----
+
+describe('leading comma input', () => {
+  it('reformats leading commas to trailing commas in SELECT', () => {
+    const sql = `SELECT column1\n,column2\n,column3\nFROM @table_variable`;
+    const result = formatSQL(sql);
+    expect(result).toContain('column1');
+    expect(result).toContain('column2');
+    expect(result).toContain('column3');
+    expect(result).toContain('FROM');
+    // Should NOT have semicolons between columns
+    expect(result).not.toMatch(/column1;\s/);
+    expect(result).not.toMatch(/column2;\s/);
+  });
+
+  it('reformats leading commas in INSERT INTO ... SELECT', () => {
+    const sql = `INSERT INTO dbo.table_name_1\n(\ncolumn1\n,column2\n,column3\n)\nSELECT column1\n,column2\n,column3\nFROM @table_variable`;
+    const result = formatSQL(sql);
+    expect(result).toContain('INSERT INTO');
+    expect(result).toContain('column1');
+    expect(result).toContain('column2');
+    expect(result).toContain('column3');
+    expect(result).toContain('SELECT');
+    expect(result).toContain('FROM');
+    // All three columns should be in the SELECT
+    const selectIdx = result.indexOf('SELECT');
+    const fromIdx = result.indexOf('FROM', selectIdx);
+    const selectPart = result.substring(selectIdx, fromIdx);
+    expect(selectPart).toContain('column1');
+    expect(selectPart).toContain('column2');
+    expect(selectPart).toContain('column3');
+  });
+
+  it('reformats leading commas with brackets and semicolons', () => {
+    const sql = `INSERT INTO dbo.table_name_1\n(\ncolumn1\n,column2\n,column3\n)\nSELECT column1\n,column2\n,column3\nFROM @table_variable`;
+    const result = formatSQL(sql, {
+      identifiers: { encloseIdentifiers: 'withBrackets', encloseIdentifiersScope: 'userDefined', alwaysBracketReservedWordIdentifiers: true },
+      whitespace: { insertSemicolons: 'insert' },
+    });
+    expect(result).toContain('[column1]');
+    expect(result).toContain('[column2]');
+    expect(result).toContain('[column3]');
+    // Should NOT produce individual semicolons after each column
+    expect(result).not.toMatch(/\[column1\];?\s*\n\s*\[column2\]/);
+  });
+
+  it('leading comma SELECT is idempotent', () => {
+    const sql = `SELECT column1\n,column2\n,column3\nFROM @table_variable`;
+    const first = formatSQL(sql);
+    const second = formatSQL(first);
+    expect(first).toBe(second);
+  });
+
+  it('leading comma INSERT INTO SELECT is idempotent', () => {
+    const sql = `INSERT INTO dbo.table_name_1\n(\ncolumn1\n,column2\n,column3\n)\nSELECT column1\n,column2\n,column3\nFROM @table_variable`;
+    const first = formatSQL(sql);
+    const second = formatSQL(first);
+    expect(first).toBe(second);
+  });
+});

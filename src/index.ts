@@ -4,6 +4,7 @@ import { tokenize, attachComments } from './tokenizer';
 import { parse } from './parser';
 import { format } from './formatter';
 import { loadConfig, DEFAULT_CONFIG, FormatConfig } from './config';
+import { analyze } from './analyzer';
 
 function printUsage(): void {
   console.log(`Usage: sql-format [options] <input.sql>
@@ -15,6 +16,8 @@ Options:
   -c, --insert-semicolons                 Insert semicolons after each statement
   -l, --line-ending <lf|crlf>            Line ending style (default: lf)
   -i, --in-place                          Overwrite the input file with formatted output
+  -w, --warn-missing-schema               Warn when table/view/proc has no schema prefix
+  -W, --warn-missing-alias                Warn when table/view has no alias
   -t, --tokens                            Print token list (debug mode)
   -a, --ast                               Print AST as JSON (debug mode)
   -h, --help                              Show this help message
@@ -34,6 +37,8 @@ function main(): void {
   let insertSemicolons = false;
   let lineEnding: string | undefined;
   let inPlace = false;
+  let warnMissingSchema = false;
+  let warnMissingAlias = false;
   let debugTokens = false;
   let debugAst = false;
 
@@ -54,6 +59,10 @@ function main(): void {
       lineEnding = args[++i];
     } else if (arg === '--in-place' || arg === '-i') {
       inPlace = true;
+    } else if (arg === '--warn-missing-schema' || arg === '-w') {
+      warnMissingSchema = true;
+    } else if (arg === '--warn-missing-alias' || arg === '-W') {
+      warnMissingAlias = true;
     } else if (arg === '--tokens' || arg === '-t') {
       debugTokens = true;
     } else if (arg === '--ast' || arg === '-a') {
@@ -157,6 +166,14 @@ function main(): void {
   if (debugAst) {
     console.log(JSON.stringify(ast, null, 2));
     return;
+  }
+
+  // Analyze for warnings
+  if (warnMissingSchema || warnMissingAlias) {
+    const warnings = analyze(ast, { warnMissingSchema, warnMissingAlias });
+    for (const w of warnings) {
+      console.warn(w.message);
+    }
   }
 
   // Format
