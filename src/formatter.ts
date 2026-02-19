@@ -809,7 +809,14 @@ class Formatter {
 
     if (node.columns) {
       lines.push(indent + '(');
-      lines.push(node.columns.map(c => clauseIndent + this.formatNode(c)).join(',\n'));
+      const colLines: string[] = [];
+      for (let i = 0; i < node.columns.length; i++) {
+        const c = node.columns[i];
+        const comments = this.formatTokenLeadingComments(this.getFirstToken(c)!, this.indent + 1);
+        const comma = i < node.columns.length - 1 ? ',' : '';
+        colLines.push(comments + clauseIndent + this.formatNode(c) + comma);
+      }
+      lines.push(colLines.join('\n'));
       lines.push(indent + ')');
     }
 
