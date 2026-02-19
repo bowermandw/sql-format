@@ -30,6 +30,11 @@ describe('analyzer', () => {
       expect(warnings).toHaveLength(0);
     });
 
+    it('does not warn for bracketed temp tables', () => {
+      const warnings = getWarnings('INSERT INTO [#temp_table] (col1) VALUES (1)', { schema: true });
+      expect(warnings).toHaveLength(0);
+    });
+
     it('does not warn for table variables', () => {
       const warnings = getWarnings('SELECT * FROM @tableVar', { schema: true });
       expect(warnings).toHaveLength(0);

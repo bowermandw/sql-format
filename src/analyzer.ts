@@ -49,7 +49,9 @@ function getIdentifierLine(node: IdentifierNode): number | undefined {
 function isTempOrVariable(node: IdentifierNode): boolean {
   const first = node.parts[0]?.value;
   if (!first) return false;
-  return first.startsWith('#') || first.startsWith('@');
+  // Strip leading bracket for quoted identifiers like [#temp] or [@var]
+  const name = first.startsWith('[') ? first.slice(1) : first;
+  return name.startsWith('#') || name.startsWith('@');
 }
 
 function checkTableReference(
