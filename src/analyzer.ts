@@ -122,14 +122,14 @@ function walkStatement(
 
     case 'insert': {
       const ins = node as InsertNode;
-      checkTableReference(ins.target, options, warnings, cteNames, true);
+      checkTableReference(ins.target, options, warnings, cteNames, false);
       if (ins.select) walkStatement(ins.select, options, warnings, cteNames);
       break;
     }
 
     case 'update': {
       const upd = node as UpdateNode;
-      checkTableReference(upd.target, options, warnings, cteNames, true);
+      checkTableReference(upd.target, options, warnings, cteNames, false);
       if (upd.from) {
         checkTableReference(upd.from.source, options, warnings, cteNames, true);
         walkSubquerySource(upd.from.source, options, warnings, cteNames);
@@ -144,7 +144,7 @@ function walkStatement(
 
     case 'delete': {
       const del = node as DeleteNode;
-      checkTableReference(del.target, options, warnings, cteNames, true);
+      checkTableReference(del.target, options, warnings, cteNames, false);
       if (del.where) walkExpression(del.where.condition, options, warnings, cteNames);
       break;
     }

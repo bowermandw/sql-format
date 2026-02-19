@@ -125,22 +125,19 @@ describe('analyzer', () => {
       expect(warnings[0].message).toContain('dbo.t2 is not aliased');
     });
 
-    it('warns for INSERT target without alias', () => {
+    it('does not warn for INSERT target without alias', () => {
       const warnings = getWarnings('INSERT INTO table_name (col1) VALUES (1)', { alias: true });
-      expect(warnings).toHaveLength(1);
-      expect(warnings[0].message).toContain('table_name is not aliased');
+      expect(warnings).toHaveLength(0);
     });
 
-    it('warns for UPDATE target without alias', () => {
+    it('does not warn for UPDATE target without alias', () => {
       const warnings = getWarnings('UPDATE table_name SET col1 = 1', { alias: true });
-      expect(warnings).toHaveLength(1);
-      expect(warnings[0].message).toContain('table_name is not aliased');
+      expect(warnings).toHaveLength(0);
     });
 
-    it('warns for DELETE target without alias', () => {
+    it('does not warn for DELETE target without alias', () => {
       const warnings = getWarnings('DELETE FROM table_name', { alias: true });
-      expect(warnings).toHaveLength(1);
-      expect(warnings[0].message).toContain('table_name is not aliased');
+      expect(warnings).toHaveLength(0);
     });
 
     it('does not warn for CTE references', () => {
