@@ -114,7 +114,12 @@ class Formatter {
       case 'createTable': return node.keywords[0];
       case 'dropTable': return node.keywords[0];
       case 'case': return node.caseToken;
-      case 'identifier': return node.parts[0];
+      case 'identifier': {
+        if (node.parts.length === 0 && (node as any)._expression) {
+          return this.getFirstToken((node as any)._expression);
+        }
+        return node.parts[0];
+      }
       case 'literal': return node.token;
       case 'rawToken': return node.token;
       case 'pivot': return node.pivotToken;
