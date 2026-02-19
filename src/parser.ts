@@ -1446,6 +1446,8 @@ class Parser {
       const name = this.parseQualifiedName();
       // Function call?
       if (this.isType(TokenType.LeftParen) && name.type === 'identifier') {
+        const funcName = (name as IdentifierNode).parts.map(p => p.value).join('.').toUpperCase();
+        const hasAsDataType = ['CAST', 'TRY_CAST', 'PARSE', 'TRY_PARSE', 'CONVERT', 'TRY_CONVERT'].includes(funcName);
         this.advance(); // (
         const args: SqlNode[] = [];
         if (!this.isType(TokenType.RightParen)) {
@@ -1457,6 +1459,11 @@ class Parser {
           while (this.isType(TokenType.Comma)) {
             this.advance();
             args.push(this.parseExpression());
+          }
+          // CAST/TRY_CAST/PARSE/TRY_PARSE/TRY_CONVERT: consume AS <datatype>
+          if (hasAsDataType && this.isWord('AS')) {
+            args.push({ type: 'rawToken', token: this.advance() } as RawTokenNode); // AS
+            args.push(this.parseDataType());
           }
         }
         if (this.isType(TokenType.RightParen)) this.advance();

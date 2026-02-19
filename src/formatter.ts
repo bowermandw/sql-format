@@ -1232,7 +1232,19 @@ class Formatter {
   private formatFunctionCall(node: FunctionCallNode): string {
     const name = this.formatNode(node.name);
     const formattedArgs = node.args.map(a => this.formatNode(a));
-    const inline = `${name}(${formattedArgs.join(', ')})`;
+
+    // Build inline string: use space (not comma) before AS keyword args (CAST/TRY_CAST/PARSE/TRY_PARSE etc.)
+    const inlineParts: string[] = [];
+    for (let i = 0; i < formattedArgs.length; i++) {
+      if (i === 0) {
+        inlineParts.push(formattedArgs[i]);
+      } else if (this.isAsKeywordArg(node.args[i]) || this.isAsKeywordArg(node.args[i - 1])) {
+        inlineParts.push(' ' + formattedArgs[i]);
+      } else {
+        inlineParts.push(', ' + formattedArgs[i]);
+      }
+    }
+    const inline = `${name}(${inlineParts.join('')})`;
 
     // Check if the inline version exceeds the wrap limit or any arg is multi-line
     const indentWidth = this.indent * this.tabStr.length;
@@ -1248,7 +1260,10 @@ class Formatter {
       // Re-format args at the inner indent level so nested constructs align
       const expanded = node.args.map((a, i) => {
         const formatted = this.formatNode(a, this.indent + 1);
-        const comma = i < node.args.length - 1 ? ',' : '';
+        // No comma before/after AS keyword args
+        const useComma = i < node.args.length - 1 &&
+          !this.isAsKeywordArg(node.args[i + 1]) && !this.isAsKeywordArg(a);
+        const comma = useComma ? ',' : '';
         // First line needs innerIndent; subsequent lines already have absolute indentation
         const lines = (innerIndent + formatted).split('\n');
         lines[lines.length - 1] += comma;
@@ -1270,6 +1285,12 @@ class Formatter {
     }
 
     return result;
+  }
+
+  /** Check if a function arg is the AS keyword (used in CAST/TRY_PARSE etc.) */
+  private isAsKeywordArg(node: SqlNode): boolean {
+    return node.type === 'rawToken' &&
+      (node as RawTokenNode).token.value.toUpperCase() === 'AS';
   }
 
   // --- Data types ---
