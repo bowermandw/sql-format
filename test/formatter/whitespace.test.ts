@@ -215,4 +215,16 @@ describe('whitespace.newLines.preserveExistingEmptyLinesBetweenComments', () => 
     expect(result).toContain('-- first comment\n\n');
     expect(result).toContain('-- second comment');
   });
+
+  it('blank line before leading comment preserves blank line between statements', () => {
+    const sql = 'SELECT * FROM dbo.table_name\n\n-- Some comment\nSELECT TOP (10) * FROM dbo.table_name_2 ORDER BY 1 DESC';
+    const result = formatSQL(sql);
+    // The blank line between the first SELECT and the comment should be preserved
+    const lines = result.split('\n');
+    const table1Idx = lines.findIndex(l => l.includes('table_name'));
+    const commentIdx = lines.findIndex(l => l.includes('-- Some comment'));
+    expect(commentIdx).toBeGreaterThan(table1Idx);
+    // There should be a blank line between them
+    expect(lines[table1Idx + 1]).toBe('');
+  });
 });

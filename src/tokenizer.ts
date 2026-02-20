@@ -345,6 +345,11 @@ export function attachComments(tokens: Token[]): Token[] {
     }
     if (pendingComments.length > 0) {
       tok.leadingComments = [...pendingComments];
+      // A blank line before the first leading comment is effectively
+      // a blank line before the statement itself
+      if (pendingComments[0].precedingBlankLine) {
+        tok.precedingBlankLine = true;
+      }
       pendingComments.length = 0;
     }
     if (sawBlankLine) {
