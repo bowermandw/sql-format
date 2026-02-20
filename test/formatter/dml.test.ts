@@ -102,6 +102,15 @@ describe('dml.collapseShortStatements for UPDATE', () => {
     expect(result.trim()).toBe('UPDATE dbo.t SET a = 1, b = 2');
   });
 
+  it('formats UPDATE with FROM and JOIN', () => {
+    const sql = "UPDATE b SET b.col1 = b.col1 + 'x' FROM dbo.t1 a INNER JOIN dbo.t2 b ON b.id = a.id AND b.col2 = a.col2";
+    const result = formatSQL(sql, {
+      dml: { collapseShortStatements: true, collapseStatementsShorterThan: 20 },
+    });
+    expect(result).toContain('INNER JOIN');
+    expect(result).toContain('ON b.id = a.id');
+  });
+
   it('stays expanded when exceeding threshold', () => {
     const result = formatSQL("UPDATE dbo.t SET col1 = 1 WHERE id = 1", {
       dml: { collapseShortStatements: true, collapseStatementsShorterThan: 20 },

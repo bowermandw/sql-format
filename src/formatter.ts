@@ -1219,6 +1219,9 @@ class Formatter {
 
     if (node.from) {
       lines.push(indent + this.kw('FROM') + ' ' + this.formatNode(node.from.source));
+      for (const join of node.from.joins) {
+        lines.push(this.formatJoin(join, this.indent));
+      }
     }
     if (node.where) {
       lines.push(this.formatWhere(node.where));
@@ -1234,6 +1237,9 @@ class Formatter {
     ).join(', ');
     if (node.from) {
       s += ' ' + this.kw('FROM') + ' ' + this.formatNode(node.from.source);
+      for (const j of node.from.joins) {
+        s += ' ' + this.collapseJoin(j);
+      }
     }
     if (node.where) {
       s += ' ' + this.kw('WHERE') + ' ' + this.formatNode(node.where.condition);
