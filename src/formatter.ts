@@ -1639,12 +1639,15 @@ class Formatter {
     if (node.type === 'expression') {
       const expr = node as ExpressionNode;
       const left = this.maybeParenthesize(expr.left, this.wrapExpression(expr.left, indentLevel));
-      const right = this.maybeParenthesize(expr.right, this.wrapExpression(expr.right, indentLevel + 1));
+      const right = this.maybeParenthesize(expr.right, this.wrapExpression(expr.right, indentLevel));
       const op = this.tokenValue(expr.operator);
       const indent = this.indentStr(indentLevel);
-      const childIndent = this.indentStr(indentLevel + 1);
       return left + '\n' + indent + op + ' ' + right;
     }
+    // Re-format non-expression nodes at the correct indent level so they can
+    // make proper expansion decisions (e.g. function calls that need to expand)
+    const reformatted = this.formatNode(node, indentLevel);
+    if (reformatted !== inline) return reformatted;
     return inline;
   }
 
