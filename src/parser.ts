@@ -985,8 +985,9 @@ class Parser {
   private looksLikeCTE(): boolean {
     // WITH name AS ( ... simplistic check
     // Look for WITH <word> AS
-    return this.isWordAt(0, 'WITH') && this.peek(1).type === TokenType.Word &&
-           (this.isWordAt(2, 'AS') || this.isWordAt(2, '('));
+    return this.isWordAt(0, 'WITH') &&
+           (this.peek(1).type === TokenType.Word || this.peek(1).type === TokenType.QuotedIdentifier) &&
+           (this.isWordAt(2, 'AS') || this.peek(2).type === TokenType.LeftParen);
   }
 
   private parseCTE(): CteNode {

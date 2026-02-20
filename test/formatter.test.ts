@@ -1201,3 +1201,28 @@ describe('leading comma input', () => {
     expect(first).toBe(second);
   });
 });
+
+// ---- CTE with bracket-quoted names ----
+
+describe('CTE with bracket-quoted names', () => {
+  it('parses and formats CTE with bracket-quoted name', () => {
+    const sql = 'WITH [cte1] AS (SELECT 1 AS col1) SELECT * FROM [cte1]';
+    const result = formatSQL(sql);
+    expect(result).toContain('WITH [cte1] AS');
+    expect(result).toContain('SELECT * FROM [cte1]');
+  });
+
+  it('parses and formats CTE with bracket-quoted name and column list', () => {
+    const sql = 'WITH [cte1] ([col1]) AS (SELECT DISTINCT [col1] FROM dbo.t1) SELECT * FROM [cte1]';
+    const result = formatSQL(sql);
+    expect(result).toContain('WITH [cte1] ([col1]) AS');
+    expect(result).toContain('SELECT * FROM [cte1]');
+  });
+
+  it('parses multiple bracket-quoted CTEs', () => {
+    const sql = 'WITH [cte1] ([col1]) AS (SELECT 1 AS col1), [cte2] ([col1]) AS (SELECT 2 AS col1) SELECT * FROM [cte2]';
+    const result = formatSQL(sql);
+    expect(result).toContain('[cte1]');
+    expect(result).toContain('[cte2]');
+  });
+});
