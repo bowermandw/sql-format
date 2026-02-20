@@ -609,7 +609,7 @@ class Parser {
             'EXCEPT', 'INTERSECT', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL',
             'CROSS', 'ON', 'SET', 'VALUES', 'END', 'ELSE', 'WHEN', 'THEN',
             'AS', 'GO', 'BEGIN', 'IF', 'DECLARE', 'PRINT', 'RETURN', 'EXEC',
-            'EXECUTE', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP',
+            'EXECUTE', 'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP',
             'FOR', 'PIVOT', 'UNPIVOT'].includes(val);
   }
 

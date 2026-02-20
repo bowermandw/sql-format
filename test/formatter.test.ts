@@ -739,6 +739,18 @@ HAVING COUNT(*) > 1`;
     expect(result).toContain("/********************\r\nLine1\r\nLine2\r\nLine3\r\n********************/");
     expect(result).not.toContain('\r\r');
   });
+
+  it('does not treat SELECT as alias when comments separate statements', () => {
+    const sql = `SELECT * FROM dbo.table_name_2
+-- some comment
+--another comment
+SELECT * FROM dbo.table_name_3`;
+    const result = formatSQL(sql);
+    expect(result).toContain('SELECT * FROM dbo.table_name_2');
+    expect(result).toContain('SELECT * FROM dbo.table_name_3');
+    expect(result).toContain('-- some comment');
+    expect(result).toContain('--another comment');
+  });
 });
 
 describe('comments between select columns', () => {
