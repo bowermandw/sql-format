@@ -204,6 +204,7 @@ export interface FunctionCallNode {
   type: 'functionCall';
   name: SqlNode;
   args: SqlNode[];
+  withinGroup?: { tokens: Token[]; orderBy: OrderByNode };
   overClause?: SqlNode;
   closeComments?: Token[];
   alias?: { asToken?: Token; name: Token };

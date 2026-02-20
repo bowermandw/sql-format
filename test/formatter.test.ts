@@ -1257,4 +1257,37 @@ describe('UNION / EXCEPT / INTERSECT', () => {
     const unions = result.match(/UNION/g);
     expect(unions).toHaveLength(2);
   });
+
+  // --- WITHIN GROUP (ORDER BY) ---
+
+  it('formats STRING_AGG with WITHIN GROUP (ORDER BY)', () => {
+    const result = formatSQL('SELECT STRING_AGG(name, \',\') WITHIN GROUP (ORDER BY name) FROM t1');
+    expect(result).toContain('WITHIN GROUP (ORDER BY');
+    expect(result).toContain('name)');
+  });
+
+  it('formats WITHIN GROUP with direction (ASC/DESC)', () => {
+    const result = formatSQL('SELECT STRING_AGG(col, \',\') WITHIN GROUP (ORDER BY col DESC) FROM t1');
+    expect(result).toContain('WITHIN GROUP (ORDER BY');
+    expect(result).toContain('DESC)');
+  });
+
+  it('formats WITHIN GROUP with alias', () => {
+    const result = formatSQL('SELECT STRING_AGG(name, \',\') WITHIN GROUP (ORDER BY name) AS names FROM t1');
+    expect(result).toContain('WITHIN GROUP (ORDER BY');
+    expect(result).toContain('AS names');
+  });
+
+  it('formats WITHIN GROUP with multiple ORDER BY columns', () => {
+    const result = formatSQL('SELECT STRING_AGG(name, \',\') WITHIN GROUP (ORDER BY last_name, first_name ASC) FROM t1');
+    expect(result).toContain('WITHIN GROUP (ORDER BY');
+    expect(result).toContain('last_name, first_name ASC)');
+  });
+
+  it('formats WITHIN GROUP idempotently', () => {
+    const sql = 'SELECT STRING_AGG(name, \',\') WITHIN GROUP (ORDER BY name DESC) AS names FROM t1';
+    const first = formatSQL(sql);
+    const second = formatSQL(first);
+    expect(first).toBe(second);
+  });
 });
