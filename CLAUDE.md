@@ -6,7 +6,7 @@ T-SQL formatter driven by RedGate-compatible JSON style configs.
 
 ```bash
 npm run build        # tsc → dist/
-npm run test         # vitest run (98 tests)
+npm run test         # vitest run (233 tests)
 npm run test:watch   # vitest watch mode
 ```
 
@@ -39,7 +39,14 @@ Three-stage pipeline: `SQL Text → Tokenizer → Token[] → Parser → AST (Ba
 
 ### Test Files
 
-- `test/tokenizer.test.ts`, `test/parser.test.ts`, `test/formatter.test.ts`
+- `test/tokenizer.test.ts` — lexer tests
+- `test/parser.test.ts` — parser tests
+- `test/formatter.test.ts` — structural/integration formatter tests
+- `test/helpers.ts` — shared `formatSQL()` helper with deep-merge config overrides
+- `test/formatter/` — per-config-section tests:
+  - `casing.test.ts`, `identifiers.test.ts`, `datatypes.test.ts`
+  - `whitespace.test.ts`, `lists.test.ts`, `dml.test.ts`, `ddl.test.ts`
+  - `control-flow.test.ts`, `variables.test.ts`, `case-expressions.test.ts`, `operators.test.ts`
 
 ## Key Public Functions
 
@@ -87,3 +94,152 @@ Key settings for line wrapping:
 - **Collapse-then-expand pattern:** try single-line version, check length threshold, fall back to expanded multi-line
 - Comments attached to tokens as `leadingComments`/`trailingComment`/`trailingComments`
 - T-SQL dialect focused (SQL Server)
+
+## Implementation Status
+
+Config options: 42 implemented / 107 total. Legend: [x] = implemented + tested, [~] = implemented but not fully functional, [ ] = not yet implemented.
+
+### whitespace (7 implemented / 9 total)
+- [x] `tabBehavior` — onlySpaces / onlyTabs / tabsWherePossible
+- [x] `numberOfSpacesInTab` — indent width
+- [x] `lineEnding` — lf / crlf
+- [x] `wrapLongLines` — enable line wrapping
+- [x] `wrapLinesLongerThan` — max line length threshold
+- [x] `whitespaceBeforeSemicolon` — none / spaceBefore / newLineBefore
+- [x] `insertSemicolons` — insert / remove / asis
+- [ ] `newLines.emptyLinesBetweenStatements`
+- [x] `newLines.preserveExistingEmptyLinesBetweenStatements`
+- [ ] `newLines.emptyLinesAfterBatchSeparator`
+- [ ] `newLines.preserveExistingEmptyLinesAfterBatchSeparator`
+- [ ] `newLines.preserveExistingEmptyLinesWithinStatements`
+
+### lists (4 implemented / 10 total)
+- [x] `placeFirstItemOnNewLine` — always / never / onlyIfSubsequentItems
+- [ ] `placeSubsequentItemsOnNewLines`
+- [ ] `alignSubsequentItemsWithFirstItem`
+- [ ] `alignItemsAcrossClauses`
+- [ ] `indentListItems`
+- [ ] `alignItemsToTabStops`
+- [x] `alignAliases`
+- [x] `alignComments`
+- [x] `commas.placeCommasBeforeItems`
+- [ ] `commas.commaAlignment`
+- [ ] `commas.addSpaceBeforeComma`
+- [ ] `commas.addSpaceAfterComma`
+
+### parentheses (0 implemented / 6 total)
+- [ ] `parenthesisStyle`
+- [ ] `indentParenthesesContents`
+- [ ] `collapseShortParenthesisContents`
+- [ ] `collapseParenthesesShorterThan`
+- [ ] `addSpacesAroundParentheses`
+- [ ] `addSpacesAroundParenthesesContents`
+
+### casing (5 implemented / 5 total)
+- [x] `reservedKeywords` — uppercase / lowercase / asis / camelCase
+- [x] `builtInFunctions`
+- [x] `builtInDataTypes`
+- [x] `globalVariables`
+- [x] `useObjectDefinitionCase`
+
+### identifiers (3 implemented / 3 total)
+- [x] `encloseIdentifiers` — asis / withBrackets / withoutBrackets
+- [x] `encloseIdentifiersScope`
+- [x] `alwaysBracketReservedWordIdentifiers`
+
+### dataTypes (1 implemented / 1 total)
+- [x] `encloseDataTypes` — asis / withBrackets / withoutBrackets
+
+### dml (4 implemented / 12 total)
+- [ ] `clauseAlignment`
+- [ ] `clauseIndentation`
+- [ ] `placeDistinctAndTopClausesOnNewLine`
+- [ ] `addNewLineAfterDistinctAndTopClauses`
+- [x] `collapseShortStatements`
+- [x] `collapseStatementsShorterThan`
+- [x] `collapseShortSubqueries`
+- [x] `collapseSubqueriesShorterThan`
+- [ ] `listItems.placeFromTableOnNewLine`
+- [ ] `listItems.placeWhereConditionOnNewLine`
+- [ ] `listItems.placeGroupByAndOrderByOnNewLine`
+- [ ] `listItems.placeInsertTableOnNewLine`
+
+### ddl (2 implemented / 10 total)
+- [ ] `parenthesisStyle`
+- [ ] `indentParenthesesContents`
+- [x] `alignDataTypesAndConstraints`
+- [ ] `placeConstraintsOnNewLines`
+- [ ] `placeConstraintColumnsOnNewLines`
+- [ ] `indentClauses`
+- [x] `placeFirstProcedureParameterOnNewLine`
+- [ ] `collapseShortStatements`
+- [ ] `collapseStatementsShorterThan`
+
+### controlFlow (2 implemented / 5 total)
+- [ ] `placeBeginKeywordOnNewLine`
+- [ ] `indentBeginEndKeywords`
+- [ ] `indentContentsOfStatements`
+- [x] `collapseShortStatements`
+- [x] `collapseStatementsShorterThan`
+
+### cte (0 implemented / 8 total)
+- [ ] `placeNameOnNewLine`
+- [ ] `indentName`
+- [ ] `placeColumnsOnNewLine`
+- [ ] `columnAlignment`
+- [ ] `placeAsOnNewLine`
+- [ ] `asAlignment`
+- [ ] `parenthesisStyle`
+- [ ] `indentContents`
+
+### variables (1 implemented / 4 total)
+- [x] `alignDataTypesAndValues`
+- [ ] `addSpaceBetweenDataTypeAndPrecision`
+- [ ] `placeAssignedValueOnNewLineIfLongerThanMaxLineLength`
+- [ ] `placeEqualsSignOnNewLine`
+
+### joinStatements (0 implemented / 9 total)
+- [ ] `join.placeOnNewLine`
+- [ ] `join.keywordAlignment`
+- [ ] `join.insertEmptyLineBetweenJoinClauses`
+- [ ] `join.placeJoinTableOnNewLine`
+- [ ] `join.indentJoinTable`
+- [ ] `on.placeOnNewLine`
+- [ ] `on.keywordAlignment`
+- [ ] `on.placeConditionOnNewLine`
+- [ ] `on.conditionAlignment`
+
+### insertStatements (0 implemented / 6 total)
+- [ ] `columnList.parenthesisStyle`
+- [ ] `columnList.indentContents`
+- [ ] `columnList.placeSubsequentColumnsOnNewLines`
+- [ ] `values.parenthesisStyle`
+- [ ] `values.indentContents`
+- [ ] `values.placeSubsequentValuesOnNewLines`
+
+### caseExpressions (4 implemented / 11 total)
+- [ ] `placeExpressionOnNewLine`
+- [ ] `placeFirstWhenOnNewLine`
+- [ ] `whenAlignment`
+- [x] `placeThenOnNewLine`
+- [x] `thenAlignment`
+- [ ] `placeElseOnNewLine`
+- [ ] `alignElseToWhen`
+- [ ] `placeEndOnNewLine`
+- [ ] `endAlignment`
+- [x] `collapseShortCaseExpressions`
+- [x] `collapseCaseExpressionsShorterThan`
+
+### operators (4 implemented / 12 total)
+- [x] `comparison.align`
+- [~] `comparison.addSpacesAroundComparisonOperators` — true works; false falls through to default (still adds spaces)
+- [~] `comparison.addSpacesAroundArithmeticOperators` — true works; false falls through to default (still adds spaces)
+- [ ] `andOr.placeOnNewLine`
+- [ ] `andOr.alignment`
+- [ ] `andOr.placeBeforeCondition`
+- [ ] `between.placeOnNewLine`
+- [ ] `between.placeAndKeywordOnNewLine`
+- [ ] `between.andAlignment`
+- [ ] `in.placeOpeningParenthesisOnNewLine`
+- [ ] `in.placeFirstValueOnNewLine`
+- [x] `in.addSpaceAroundInContents`
