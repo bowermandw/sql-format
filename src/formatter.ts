@@ -828,6 +828,12 @@ class Formatter {
     return nlIdx === -1 ? s.length : s.length - nlIdx - 1;
   }
 
+  /** Get the length of the longest line in a possibly multi-line string. */
+  private maxLineLength(s: string): number {
+    if (!s.includes('\n')) return s.length;
+    return Math.max(...s.split('\n').map(l => l.length));
+  }
+
   private appendSelectItemAlias(s: string, alias: { asToken?: Token; name: Token }, alignWidth?: number): string {
     const isMultiLine = s.includes('\n');
     const lastLen = this.lastLineLength(s);
@@ -1513,7 +1519,11 @@ class Formatter {
       s += ' ' + fmtSpecialIdent(node.value);
       return s;
     }
-    return indent + this.kw('SET') + ' ' + this.formatNode(node.target) + ' = ' + this.formatNode(node.value);
+    const prefix = indent + this.kw('SET') + ' ' + this.formatNode(node.target) + ' = ';
+    const value = node.value.type === 'expression'
+      ? this.wrapExpression(node.value, this.indent)
+      : this.formatNode(node.value);
+    return prefix + value;
   }
 
   // --- PRINT ---
@@ -1642,7 +1652,10 @@ class Formatter {
       const right = this.maybeParenthesize(expr.right, this.wrapExpression(expr.right, indentLevel));
       const op = this.tokenValue(expr.operator);
       const indent = this.indentStr(indentLevel);
-      return left + '\n' + indent + op + ' ' + right;
+      // Emit leading comments on the right operand (e.g. comment between + and next value)
+      const rightToken = this.getFirstToken(expr.right);
+      const rightComments = rightToken ? this.formatTokenLeadingComments(rightToken, indentLevel) : '';
+      return left + '\n' + rightComments + indent + op + ' ' + right;
     }
     // Re-format non-expression nodes at the correct indent level so they can
     // make proper expansion decisions (e.g. function calls that need to expand)
@@ -1660,13 +1673,6 @@ class Formatter {
   }
 
   private formatExpression(node: ExpressionNode): string {
-    const left = this.maybeParenthesize(node.left, this.formatNode(node.left));
-    const right = this.maybeParenthesize(node.right, this.formatNode(node.right));
-    const op = this.tokenValue(node.operator);
-
-    // Handle unary (empty left)
-    if (left === '') return op + right;
-
     // Emit leading comments on the operator token (e.g. comment before AND)
     const opComments = this.formatTokenLeadingComments(node.operator);
     // Emit leading comments on the right operand (e.g. comment between + and next value)
@@ -1679,10 +1685,22 @@ class Formatter {
       rightToken.leadingComments = undefined;
     }
 
+    const hasComments = !!(opComments || rightComments);
+
+    // When comments force a line break, wrap the left child independently
+    // so each segment between comments is wrapped within the line limit
+    const left = hasComments && this.config.whitespace.wrapLongLines
+      ? this.maybeParenthesize(node.left, this.wrapExpression(node.left, this.indent))
+      : this.maybeParenthesize(node.left, this.formatNode(node.left));
+    const right = this.maybeParenthesize(node.right, this.formatNode(node.right));
+    const op = this.tokenValue(node.operator);
+
+    // Handle unary (empty left)
+    if (left === '') return op + right;
+
     const opUpper = node.operator.value.toUpperCase();
 
     // If there are comments on either the operator or the right operand, force a line break
-    const hasComments = !!(opComments || rightComments);
     const commentStr = (opComments || '') + (rightComments || '');
 
     // Format operator with optional leading comments
