@@ -835,6 +835,13 @@ FROM dbo.table_name_1 WHERE [column1] = 'value_to_prevent_collapse_xxxxxxxxx'`;
     expect(result).toContain('-- first commented column');
     expect(result).toContain('-- second commented column');
   });
+
+  it('preserves comment before function call column', () => {
+    const sql = `SELECT\nISNULL(column1, 0) AS [column1],\n--column_commented_out\n\nISNULL(column2, 0) AS [column2]\nFROM dbo.table_name_1`;
+    const result = formatSQL(sql);
+    expect(result).toContain('--column_commented_out');
+    expect(result).toContain('ISNULL(column2, 0)');
+  });
 });
 
 // ---- Parentheses preservation ----

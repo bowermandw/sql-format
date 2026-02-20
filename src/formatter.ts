@@ -126,6 +126,7 @@ class Formatter {
       case 'rawToken': return node.token;
       case 'pivot': return node.pivotToken;
       case 'expression': return this.getFirstToken(node.left);
+      case 'functionCall': return this.getFirstToken(node.name);
       default: return undefined;
     }
   }
