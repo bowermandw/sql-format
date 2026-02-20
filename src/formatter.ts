@@ -1669,38 +1669,61 @@ class Formatter {
 
     // Emit leading comments on the operator token (e.g. comment before AND)
     const opComments = this.formatTokenLeadingComments(node.operator);
+    // Emit leading comments on the right operand (e.g. comment between + and next value)
+    const rightToken = this.getFirstToken(node.right);
+    const rightComments = rightToken ? this.formatTokenLeadingComments(rightToken) : '';
+    // Clear them so they don't get emitted again by child formatters
+    let savedComments: any[] | undefined;
+    if (rightComments && rightToken) {
+      savedComments = rightToken.leadingComments;
+      rightToken.leadingComments = undefined;
+    }
 
     const opUpper = node.operator.value.toUpperCase();
 
+    // If there are comments on either the operator or the right operand, force a line break
+    const hasComments = !!(opComments || rightComments);
+    const commentStr = (opComments || '') + (rightComments || '');
+
     // Format operator with optional leading comments
-    const opPrefix = opComments
-      ? '\n' + opComments + this.indentStr()
+    const opPrefix = hasComments
+      ? '\n' + commentStr + this.indentStr()
       : ' ';
+
+    let result: string;
 
     // Special: IS, IS NOT, LIKE, NOT LIKE
     if (opUpper === 'IS' || opUpper === 'IS NOT' || opUpper === 'LIKE' || opUpper.startsWith('NOT ')) {
-      return `${left}${opPrefix}${this.kw(opUpper)} ${right}`;
+      result = `${left}${opPrefix}${this.kw(opUpper)} ${right}`;
     }
-
     // Comparison and arithmetic operators — add spaces around them
-    if (this.config.operators.comparison.addSpacesAroundComparisonOperators &&
+    else if (this.config.operators.comparison.addSpacesAroundComparisonOperators &&
         ['=', '<', '>', '<=', '>=', '<>', '!='].includes(node.operator.value)) {
-      if (opComments) return `${left}${opPrefix}${op} ${right}`;
-      return `${left} ${op} ${right}`;
+      if (hasComments) result = `${left}${opPrefix}${op} ${right}`;
+      else result = `${left} ${op} ${right}`;
     }
-    if (this.config.operators.comparison.addSpacesAroundArithmeticOperators &&
+    else if (this.config.operators.comparison.addSpacesAroundArithmeticOperators &&
         ['+', '-', '*', '/', '%'].includes(node.operator.value)) {
-      if (opComments) return `${left}${opPrefix}${op} ${right}`;
-      return `${left} ${op} ${right}`;
+      if (hasComments) result = `${left}${opPrefix}${op} ${right}`;
+      else result = `${left} ${op} ${right}`;
     }
-
     // AND/OR at top level
-    if (opUpper === 'AND' || opUpper === 'OR') {
-      return `${left}${opPrefix}${this.kw(opUpper)} ${right}`;
+    else if (opUpper === 'AND' || opUpper === 'OR') {
+      result = `${left}${opPrefix}${this.kw(opUpper)} ${right}`;
+    }
+    else if (hasComments) {
+      result = `${left}${opPrefix}${op} ${right}`;
+    }
+    else {
+      result = `${left} ${op} ${right}`;
     }
 
-    if (opComments) return `${left}${opPrefix}${op} ${right}`;
-    return `${left} ${op} ${right}`;
+    // Restore comments in case node is re-formatted (e.g. by wrapExpression)
+    if (savedComments && rightToken) {
+      rightToken.leadingComments = savedComments;
+    }
+
+    return result;
   }
 
   // --- Function calls ---
