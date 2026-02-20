@@ -1580,6 +1580,12 @@ class Formatter {
 
   // --- CASE ---
 
+  private isAndOrExpression(node: SqlNode): boolean {
+    if (node.type !== 'expression') return false;
+    const op = (node as ExpressionNode).operator.value.toUpperCase();
+    return op === 'AND' || op === 'OR';
+  }
+
   private formatCase(node: CaseNode): string {
     // Try collapse
     if (this.config.caseExpressions.collapseShortCaseExpressions) {
@@ -1614,6 +1620,17 @@ class Formatter {
 
     for (const wc of node.whenClauses) {
       let whenLine = whenIndent + this.kw('WHEN') + ' ' + this.formatNode(wc.condition);
+
+      // Wrap long WHEN conditions with AND/OR onto multiple lines
+      if (wrapEnabled && whenLine.length > maxLineLen && this.isAndOrExpression(wc.condition)) {
+        const condIndentLevel = this.indent + 2;
+        const whenPrefix = this.kw('WHEN') + ' ';
+        const condFormatted = this.config.operators.comparison.align
+          ? this.formatConditionAligned(wc.condition, condIndentLevel, whenPrefix.length)
+          : this.formatCondition(wc.condition, condIndentLevel);
+        whenLine = whenIndent + whenPrefix + condFormatted;
+      }
+
       const resultStr = this.formatNode(wc.result);
       if (this.config.caseExpressions.placeThenOnNewLine) {
         parts.push(whenLine);
