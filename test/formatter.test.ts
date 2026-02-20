@@ -1290,4 +1290,19 @@ describe('UNION / EXCEPT / INTERSECT', () => {
     const second = formatSQL(first);
     expect(first).toBe(second);
   });
+
+  it('expands function args when WITHIN GROUP suffix exceeds wrap limit', () => {
+    const sql = "SELECT @var = STRING_AGG(CONCAT('[', column_name, ']'), ',') WITHIN GROUP (ORDER BY column_name, column2) FROM dbo.table_name_1 WHERE col2 = 'n'";
+    const result = formatSQL(sql, {
+      whitespace: { wrapLongLines: true, wrapLinesLongerThan: 78 },
+      dml: { collapseShortStatements: false },
+    });
+    // The function args should be expanded across multiple lines
+    expect(result).toContain('STRING_AGG (\n');
+    expect(result).toContain('WITHIN GROUP (ORDER BY');
+    // Every line should be within the wrap limit
+    for (const line of result.split('\n')) {
+      expect(line.length).toBeLessThanOrEqual(78);
+    }
+  });
 });

@@ -78,6 +78,35 @@ describe('whitespace.wrapLongLines', () => {
     });
     expect(result).toContain('CONCAT(a, b)');
   });
+
+  it('wraps bare expression columns (SELECT @var = long_expr)', () => {
+    const sql = "SELECT @var = CONVERT(NVARCHAR(MAX), N'asdflkasasfdlkjasdf' + CHAR(13) + N'asdlfkasdflkjasdf') + 'asdlfkjasdflkjasdf' + CONVERT(NVARCHAR(MAX), N'asdf asdf asdf asdf asdf')";
+    const result = formatSQL(sql, {
+      whitespace: { wrapLongLines: true, wrapLinesLongerThan: 78 },
+    });
+    // The long concatenation should be split across lines
+    const lines = result.split('\n');
+    for (const line of lines) {
+      expect(line.length).toBeLessThanOrEqual(78);
+    }
+    // Should still contain both CONVERTs
+    expect(result).toContain('CONVERT');
+    const convertCount = (result.match(/CONVERT/g) || []).length;
+    expect(convertCount).toBe(2);
+  });
+
+  it('wraps multi-line expression when last line exceeds limit', () => {
+    // When a function expands to multi-line, the closing ) + remaining expr
+    // should still be wrapped if the last line exceeds the limit
+    const sql = "SELECT @v = CONVERT(NVARCHAR(MAX), N'aaa' + CHAR(13) + N'bbb') + 'cccccccccccccccccccccccccc' + CONVERT(NVARCHAR(MAX), N'ddddddddddddddd')";
+    const result = formatSQL(sql, {
+      whitespace: { wrapLongLines: true, wrapLinesLongerThan: 60 },
+    });
+    const lines = result.split('\n');
+    for (const line of lines) {
+      expect(line.length).toBeLessThanOrEqual(60);
+    }
+  });
 });
 
 // ---- whitespace.whitespaceBeforeSemicolon ----
