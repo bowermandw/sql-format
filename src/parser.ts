@@ -1576,26 +1576,15 @@ class Parser {
             args.push(this.parseDataType());
           }
         }
-        const fnNode: FunctionCallNode = { type: 'functionCall', name, args };
-        // WITHIN GROUP (ORDER BY ...): can appear inside or outside the closing paren
-        if (this.isWord('WITHIN') && this.isWordAt(1, 'GROUP')) {
-          const withinToken = this.advance(); // WITHIN
-          const groupToken = this.advance(); // GROUP
-          if (this.isType(TokenType.LeftParen)) {
-            this.advance(); // (
-            const orderBy = this.parseOrderBy();
-            if (this.isType(TokenType.RightParen)) this.advance(); // )
-            fnNode.withinGroup = { tokens: [withinToken, groupToken], orderBy };
-          }
-        }
         let closeComments: Token[] | undefined;
         if (this.isType(TokenType.RightParen)) {
           const rp = this.advance();
           if (rp.leadingComments?.length) closeComments = rp.leadingComments;
         }
+        const fnNode: FunctionCallNode = { type: 'functionCall', name, args };
         if (closeComments) fnNode.closeComments = closeComments;
-        // WITHIN GROUP can also appear after the closing paren
-        if (!fnNode.withinGroup && this.isWord('WITHIN') && this.isWordAt(1, 'GROUP')) {
+        // WITHIN GROUP (ORDER BY ...): STRING_AGG(...) WITHIN GROUP (ORDER BY ...)
+        if (this.isWord('WITHIN') && this.isWordAt(1, 'GROUP')) {
           const withinToken = this.advance(); // WITHIN
           const groupToken = this.advance(); // GROUP
           if (this.isType(TokenType.LeftParen)) {

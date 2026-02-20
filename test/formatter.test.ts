@@ -1276,10 +1276,4 @@ describe('WITHIN GROUP clause', () => {
     const result = formatSQL("SELECT STRING_AGG(col1, ', ') WITHIN GROUP (ORDER BY col1) AS combined FROM dbo.t1");
     expect(result).toContain('WITHIN GROUP (ORDER BY col1) AS combined');
   });
-
-  it('formats WITHIN GROUP inside function parens', () => {
-    const sql = "SELECT @v = STRING_AGG(CONCAT('[', [col1], ']', ',') WITHIN GROUP (ORDER BY [col2], [col3])) FROM dbo.t1";
-    const result = formatSQL(sql);
-    expect(result).toContain('WITHIN GROUP (ORDER BY [col2], [col3])');
-  });
 });
