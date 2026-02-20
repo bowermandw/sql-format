@@ -85,6 +85,28 @@ describe('dml.collapseShortStatements for INSERT', () => {
   });
 });
 
+// ---- INSERT ... EXECUTE ----
+
+describe('INSERT INTO ... EXECUTE', () => {
+  it('formats INSERT INTO with EXECUTE as a single statement', () => {
+    const result = formatSQL('INSERT INTO #resultset EXECUTE dbo.stored_proc_name');
+    expect(result.trim()).toBe('INSERT INTO #resultset EXECUTE dbo.stored_proc_name');
+  });
+
+  it('formats INSERT INTO with EXEC as a single statement', () => {
+    const result = formatSQL('INSERT INTO #tmp EXEC dbo.sp_name');
+    expect(result.trim()).toBe('INSERT INTO #tmp EXEC dbo.sp_name');
+  });
+
+  it('formats expanded INSERT with columns and EXEC', () => {
+    const result = formatSQL('INSERT INTO #tmp (col1, col2) EXEC dbo.sp_name @p1 = 1', {
+      dml: { collapseShortStatements: false, collapseStatementsShorterThan: 0 },
+    });
+    expect(result).toContain('EXEC dbo.sp_name');
+    expect(result).toContain('col1');
+  });
+});
+
 // ---- dml.collapseShortStatements for UPDATE ----
 
 describe('dml.collapseShortStatements for UPDATE', () => {

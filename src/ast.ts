@@ -83,6 +83,7 @@ export interface InsertNode {
   columns?: SqlNode[];
   values?: { token: Token; rows: SqlNode[][] };
   select?: SelectNode;
+  exec?: SqlNode;
 }
 
 export interface UpdateNode {

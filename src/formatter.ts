@@ -1177,6 +1177,10 @@ class Formatter {
       lines.push(this.formatSelect(node.select));
     }
 
+    if (node.exec) {
+      lines.push(indent + this.formatNode(node.exec));
+    }
+
     return lines.join('\n');
   }
 
@@ -1195,6 +1199,9 @@ class Formatter {
     }
     if (node.select) {
       s += ' ' + this.collapseSelect(node.select);
+    }
+    if (node.exec) {
+      s += ' ' + this.formatNode(node.exec);
     }
     return s;
   }

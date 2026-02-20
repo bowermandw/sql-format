@@ -928,7 +928,12 @@ class Parser {
       select = this.parseSelect();
     }
 
-    return { type: 'insert', insertToken, intoToken, target, columns, values, select };
+    let exec: SqlNode | undefined;
+    if (this.isWord('EXEC') || this.isWord('EXECUTE')) {
+      exec = this.parseExec();
+    }
+
+    return { type: 'insert', insertToken, intoToken, target, columns, values, select, exec };
   }
 
   private parseUpdate(): UpdateNode {
