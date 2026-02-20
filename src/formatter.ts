@@ -473,6 +473,9 @@ class Formatter {
           let exprStr = aliased._expression
             ? this.wrapExpression(aliased._expression, indentLevel)
             : aliased.parts ? aliased.parts.map((p: Token) => this.formatIdentifierPart(p)).join('.') : '';
+          if (aliased._expression?._parenthesized) {
+            exprStr = '(' + exprStr + ')';
+          }
           // If the expression + alias would overflow, re-format with CASE
           // collapsing disabled so the width reflects the expanded form.
           if (aliased._expression && !exprStr.includes('\n') && this.config.whitespace.wrapLongLines) {
@@ -484,6 +487,9 @@ class Formatter {
               const savedCaseCollapse = this.config.caseExpressions.collapseShortCaseExpressions;
               (this.config.caseExpressions as any).collapseShortCaseExpressions = false;
               exprStr = this.wrapExpression(aliased._expression, indentLevel);
+              if (aliased._expression._parenthesized) {
+                exprStr = '(' + exprStr + ')';
+              }
               (this.config.caseExpressions as any).collapseShortCaseExpressions = savedCaseCollapse;
             }
           }
@@ -648,6 +654,9 @@ class Formatter {
       let s = wrap
         ? this.wrapExpression(aliased._expression, this.indent)
         : this.formatNode(aliased._expression);
+      if (aliased._expression._parenthesized) {
+        s = '(' + s + ')';
+      }
       if (aliased.alias) {
         s = this.appendSelectItemAlias(s, aliased.alias, alignWidth);
       }
@@ -660,6 +669,9 @@ class Formatter {
           const savedCaseCollapse = this.config.caseExpressions.collapseShortCaseExpressions;
           (this.config.caseExpressions as any).collapseShortCaseExpressions = false;
           s = this.wrapExpression(aliased._expression, this.indent);
+          if (aliased._expression._parenthesized) {
+            s = '(' + s + ')';
+          }
           (this.config.caseExpressions as any).collapseShortCaseExpressions = savedCaseCollapse;
           if (aliased.alias) {
             s = this.appendSelectItemAlias(s, aliased.alias, alignWidth);
