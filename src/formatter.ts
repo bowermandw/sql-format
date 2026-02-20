@@ -708,7 +708,10 @@ class Formatter {
     if (node.on) {
       const onIndent = this.indentStr(bi + 2);
       const onPrefix = this.kw('ON') + ' ';
+      const savedIndent = this.indent;
+      this.indent = bi + 2;
       const condStr = this.formatNode(node.on.condition);
+      this.indent = savedIndent;
       const onLine = onIndent + onPrefix + condStr;
 
       if (this.config.whitespace.wrapLongLines && onLine.length > this.config.whitespace.wrapLinesLongerThan) {
@@ -759,7 +762,8 @@ class Formatter {
         const left = this.formatCondition(expr.left, indentLevel);
         const right = this.formatCondition(expr.right, indentLevel);
         const indent = this.indentStr(indentLevel);
-        return left + '\n' + indent + this.kw(opUpper) + ' ' + right;
+        const opComments = this.formatTokenLeadingComments(expr.operator, indentLevel);
+        return left + '\n' + (opComments ? opComments : '') + indent + this.kw(opUpper) + ' ' + right;
       }
     }
     return this.formatNode(node);
@@ -1214,28 +1218,39 @@ class Formatter {
     // Handle unary (empty left)
     if (left === '') return op + right;
 
+    // Emit leading comments on the operator token (e.g. comment before AND)
+    const opComments = this.formatTokenLeadingComments(node.operator);
+
     const opUpper = node.operator.value.toUpperCase();
+
+    // Format operator with optional leading comments
+    const opPrefix = opComments
+      ? '\n' + opComments + this.indentStr()
+      : ' ';
 
     // Special: IS, IS NOT, LIKE, NOT LIKE
     if (opUpper === 'IS' || opUpper === 'IS NOT' || opUpper === 'LIKE' || opUpper.startsWith('NOT ')) {
-      return `${left} ${this.kw(opUpper)} ${right}`;
+      return `${left}${opPrefix}${this.kw(opUpper)} ${right}`;
     }
 
     // Comparison and arithmetic operators — add spaces around them
     if (this.config.operators.comparison.addSpacesAroundComparisonOperators &&
         ['=', '<', '>', '<=', '>=', '<>', '!='].includes(node.operator.value)) {
+      if (opComments) return `${left}${opPrefix}${op} ${right}`;
       return `${left} ${op} ${right}`;
     }
     if (this.config.operators.comparison.addSpacesAroundArithmeticOperators &&
         ['+', '-', '*', '/', '%'].includes(node.operator.value)) {
+      if (opComments) return `${left}${opPrefix}${op} ${right}`;
       return `${left} ${op} ${right}`;
     }
 
     // AND/OR at top level
     if (opUpper === 'AND' || opUpper === 'OR') {
-      return `${left} ${this.kw(opUpper)} ${right}`;
+      return `${left}${opPrefix}${this.kw(opUpper)} ${right}`;
     }
 
+    if (opComments) return `${left}${opPrefix}${op} ${right}`;
     return `${left} ${op} ${right}`;
   }
 
