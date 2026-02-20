@@ -85,6 +85,25 @@ describe('dml.collapseShortStatements for INSERT', () => {
   });
 });
 
+// ---- SELECT INTO ----
+
+describe('SELECT INTO', () => {
+  it('preserves INTO clause in collapsed SELECT', () => {
+    const result = formatSQL('SELECT TOP (0) * INTO #temp_table FROM dbo.t1', {
+      dml: { collapseShortStatements: true, collapseStatementsShorterThan: 1000 },
+    });
+    expect(result.trim()).toBe('SELECT TOP (0) * INTO #temp_table FROM dbo.t1');
+  });
+
+  it('preserves INTO clause in expanded SELECT', () => {
+    const result = formatSQL('SELECT col1, col2 INTO #temp FROM dbo.t1 WHERE col1 = 1', {
+      dml: { collapseShortStatements: false, collapseStatementsShorterThan: 0 },
+    });
+    expect(result).toContain('INTO #temp');
+    expect(result).toContain('FROM');
+  });
+});
+
 // ---- INSERT ... EXECUTE ----
 
 describe('INSERT INTO ... EXECUTE', () => {

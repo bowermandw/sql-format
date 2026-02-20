@@ -723,6 +723,11 @@ class Formatter {
       }
     }
 
+    // INTO (SELECT ... INTO #temp)
+    if (node.into) {
+      lines.push(indent + this.kw('INTO') + ' ' + this.formatNode(node.into.target));
+    }
+
     // FROM
     if (node.from) {
       const fromComments = this.formatTokenLeadingComments(node.from.token, baseIndent);
@@ -785,6 +790,9 @@ class Formatter {
     if (node.distinct) s += ' ' + this.kw('DISTINCT');
     if (node.top) s += ' ' + this.kw('TOP') + ' (' + this.formatNode(node.top.value) + ')';
     s += ' ' + node.columns.map(c => this.formatSelectItem(c)).join(', ');
+    if (node.into) {
+      s += ' ' + this.kw('INTO') + ' ' + this.formatNode(node.into.target);
+    }
     if (node.from) {
       s += ' ' + this.kw('FROM') + ' ' + this.formatNode(node.from.source);
       for (const j of node.from.joins) {
