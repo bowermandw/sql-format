@@ -1258,3 +1258,22 @@ describe('UNION / EXCEPT / INTERSECT', () => {
     expect(unions).toHaveLength(2);
   });
 });
+
+// ---- WITHIN GROUP (ORDER BY ...) ----
+
+describe('WITHIN GROUP clause', () => {
+  it('formats STRING_AGG with WITHIN GROUP', () => {
+    const result = formatSQL("SELECT STRING_AGG(col1, ', ') WITHIN GROUP (ORDER BY col1) FROM dbo.t1");
+    expect(result).toContain('WITHIN GROUP (ORDER BY col1)');
+  });
+
+  it('formats WITHIN GROUP with direction', () => {
+    const result = formatSQL("SELECT STRING_AGG(col1, ', ') WITHIN GROUP (ORDER BY col1 DESC) FROM dbo.t1");
+    expect(result).toContain('WITHIN GROUP (ORDER BY col1 DESC)');
+  });
+
+  it('formats WITHIN GROUP with alias', () => {
+    const result = formatSQL("SELECT STRING_AGG(col1, ', ') WITHIN GROUP (ORDER BY col1) AS combined FROM dbo.t1");
+    expect(result).toContain('WITHIN GROUP (ORDER BY col1) AS combined');
+  });
+});

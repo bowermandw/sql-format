@@ -1100,15 +1100,18 @@ class Formatter {
 
   // --- ORDER BY ---
 
-  formatOrderBy(node: OrderByNode, baseIndent?: number): string {
+  formatOrderBy(node: OrderByNode, baseIndent?: number, inline?: boolean): string {
     const bi = baseIndent ?? this.indent;
-    const indent = this.indentStr(bi);
-    const clauseIndent = this.indentStr(bi + 1);
     const items = node.items.map(i => {
       let s = this.formatNode(i.expr);
       if (i.direction) s += ' ' + this.kw(i.direction.value);
       return s;
     });
+    if (inline) {
+      return this.kw('ORDER') + ' ' + this.kw('BY') + ' ' + items.join(', ');
+    }
+    const indent = this.indentStr(bi);
+    const clauseIndent = this.indentStr(bi + 1);
     return indent + this.kw('ORDER') + ' ' + this.kw('BY') + '\n' +
       items.map(i => clauseIndent + i).join(',\n');
   }
@@ -1737,6 +1740,12 @@ class Formatter {
       result = `${name} (\n${expanded.join('\n')}${closeCommentStr}\n${outerIndent})`;
     } else {
       result = inline;
+    }
+
+    // WITHIN GROUP (ORDER BY ...): STRING_AGG(...) WITHIN GROUP (ORDER BY ...)
+    if (node.withinGroup) {
+      const kw = node.withinGroup.tokens.map(t => this.kw(t.value)).join(' ');
+      result += ' ' + kw + ' (' + this.formatOrderBy(node.withinGroup.orderBy, this.indent, true) + ')';
     }
 
     // OVER clause: SUM(...) OVER (PARTITION BY ...)
