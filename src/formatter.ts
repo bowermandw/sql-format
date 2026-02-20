@@ -130,6 +130,84 @@ class Formatter {
     }
   }
 
+  /** Get the last token from an AST node (for extracting trailing comments). */
+  private getLastToken(node: SqlNode): Token | undefined {
+    switch (node.type) {
+      case 'select': {
+        if (node.orderBy) return this.getLastToken(node.orderBy.items[node.orderBy.items.length - 1].direction ? { type: 'rawToken', token: node.orderBy.items[node.orderBy.items.length - 1].direction! } as RawTokenNode : node.orderBy.items[node.orderBy.items.length - 1].expr);
+        if (node.having) return this.getLastToken(node.having.condition);
+        if (node.groupBy) return this.getLastToken(node.groupBy.items[node.groupBy.items.length - 1]);
+        if (node.where) return this.getLastToken(node.where.condition);
+        if (node.from) {
+          const joins = node.from.joins;
+          if (joins.length > 0) return this.getLastToken(joins[joins.length - 1]);
+          return this.getLastToken(node.from.source);
+        }
+        if (node.columns.length > 0) return this.getLastToken(node.columns[node.columns.length - 1]);
+        return node.selectToken;
+      }
+      case 'insert': {
+        if (node.select) return this.getLastToken(node.select);
+        return undefined; // VALUES rows are complex
+      }
+      case 'update': {
+        if (node.where) return this.getLastToken(node.where.condition);
+        const lastAssign = node.assignments[node.assignments.length - 1];
+        if (lastAssign) return this.getLastToken(lastAssign.value);
+        return undefined;
+      }
+      case 'delete': {
+        if (node.where) return this.getLastToken(node.where.condition);
+        return this.getLastToken(node.target);
+      }
+      case 'set': return this.getLastToken(node.value);
+      case 'declare': {
+        const lastVar = node.variables[node.variables.length - 1];
+        if (lastVar.default) return this.getLastToken(lastVar.default);
+        return this.getLastToken(lastVar.dataType);
+      }
+      case 'print': return this.getLastToken(node.expression);
+      case 'return': return node.expression ? this.getLastToken(node.expression) : node.token;
+      case 'createTable': {
+        if (node.onFilegroup?.length) return node.onFilegroup[node.onFilegroup.length - 1];
+        return undefined;
+      }
+      case 'dropTable': return this.getLastToken(node.name);
+      case 'alterTable': {
+        if (node.action.length > 0) return node.action[node.action.length - 1];
+        return this.getLastToken(node.name);
+      }
+      case 'rawToken': {
+        if (node.extraTokens?.length) return node.extraTokens[node.extraTokens.length - 1];
+        return node.token;
+      }
+      case 'identifier': {
+        if (node.alias) return node.alias.name;
+        if (node.parts.length > 0) return node.parts[node.parts.length - 1];
+        if ((node as any)._expression) return this.getLastToken((node as any)._expression);
+        return undefined;
+      }
+      case 'literal': return node.token;
+      case 'expression': return this.getLastToken(node.right);
+      case 'functionCall': {
+        if (node.alias) return node.alias.name;
+        return undefined; // closing paren isn't stored as a token
+      }
+      case 'inExpression': return undefined; // closing paren
+      case 'between': return this.getLastToken(node.high);
+      case 'case': return node.endToken;
+      case 'join': {
+        if (node.on) return this.getLastToken(node.on.condition);
+        return this.getLastToken(node.table);
+      }
+      case 'parenGroup': {
+        if (node.alias) return node.alias.name;
+        return undefined;
+      }
+      default: return undefined;
+    }
+  }
+
   /** Check if a node had a blank line before it in the original source. */
   private hasPrecedingBlankLine(node: SqlNode): boolean {
     const token = this.getFirstToken(node);
@@ -162,6 +240,15 @@ class Formatter {
     return '\n' + comments.map(c => indent + c.value).join('\n');
   }
 
+  /** Get the trailing inline comment from the last token of a node (if any). */
+  private getTrailingComment(node: SqlNode): string {
+    const token = this.getLastToken(node);
+    if (token?.trailingComment) {
+      return ' ' + token.trailingComment.value;
+    }
+    return '';
+  }
+
   /**
    * Format a statement and append a semicolon if it's a leaf statement
    * and insertSemicolons is 'insert'.
@@ -169,10 +256,11 @@ class Formatter {
   private formatStatement(node: SqlNode): string {
     const comments = this.formatLeadingComments(node);
     const formatted = this.formatNode(node);
+    const trailing = this.getTrailingComment(node);
     if (this.isLeafStatement(node)) {
-      return comments + this.withSemicolon(formatted, node);
+      return comments + this.withSemicolon(formatted, node) + trailing;
     }
-    return comments + formatted;
+    return comments + formatted + trailing;
   }
 
   // --- Batch ---

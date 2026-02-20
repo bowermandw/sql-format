@@ -712,6 +712,34 @@ HAVING COUNT(*) > 1`;
     expect(result).toContain('-- trailing comment after GO');
   });
 
+  it('preserves inline trailing comment on SELECT FROM', () => {
+    const result = formatSQL('SELECT * FROM [dbo].[t1] -- comment');
+    expect(result).toContain('[dbo].[t1] -- comment');
+  });
+
+  it('preserves inline trailing comments on multiple statements', () => {
+    const sql = `SELECT * FROM [dbo].[t1] -- 1\nSELECT * FROM [dbo].[t2] -- 2\nSELECT * FROM [dbo].[t3] WHERE [col] = 1 -- 3`;
+    const result = formatSQL(sql);
+    expect(result).toContain('[t1] -- 1');
+    expect(result).toContain('[t2] -- 2');
+    expect(result).toContain('= 1 -- 3');
+  });
+
+  it('preserves inline trailing comment on SET statement', () => {
+    const result = formatSQL('SET @x = 1 -- set x');
+    expect(result).toContain('= 1 -- set x');
+  });
+
+  it('preserves inline trailing comment on DECLARE', () => {
+    const result = formatSQL('DECLARE @x INT -- my var');
+    expect(result).toContain('INT -- my var');
+  });
+
+  it('preserves inline trailing comment on DELETE', () => {
+    const result = formatSQL('DELETE FROM dbo.t WHERE id = 1 -- remove');
+    expect(result).toContain('= 1 -- remove');
+  });
+
   it('does not insert blank lines between comments with CRLF input', () => {
     const sql = "SELECT 1\r\nGO\r\n-- comment1\r\n-- comment2\r\n";
     const result = formatSQL(sql);
