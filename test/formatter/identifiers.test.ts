@@ -140,3 +140,35 @@ describe('identifiers.alwaysBracketReservedWordIdentifiers', () => {
     expect(result).not.toContain('[');
   });
 });
+
+// ---- EXEC/EXECUTE identifier enclosure ----
+
+describe('EXEC identifier enclosure', () => {
+  const withBrackets = {
+    identifiers: { encloseIdentifiers: 'withBrackets', encloseIdentifiersScope: 'userDefined', alwaysBracketReservedWordIdentifiers: true },
+  };
+  const withoutBrackets = {
+    identifiers: { encloseIdentifiers: 'withoutBrackets', encloseIdentifiersScope: 'userDefined', alwaysBracketReservedWordIdentifiers: true },
+  };
+
+  it('adds brackets to EXEC proc name with withBrackets', () => {
+    const result = formatSQL('EXEC dbo.myProc', withBrackets);
+    expect(result.trim()).toBe('EXEC [dbo].[myProc]');
+  });
+
+  it('adds brackets to EXECUTE proc name with withBrackets', () => {
+    const result = formatSQL('EXECUTE dbo.stored_proc_name', withBrackets);
+    expect(result.trim()).toBe('EXECUTE [dbo].[stored_proc_name]');
+  });
+
+  it('strips brackets from EXEC proc name with withoutBrackets', () => {
+    const result = formatSQL('EXECUTE [dbo].[stored_proc_name]', withoutBrackets);
+    expect(result.trim()).toBe('EXECUTE dbo.stored_proc_name');
+  });
+
+  it('preserves params while bracketing proc name', () => {
+    const result = formatSQL("EXEC dbo.myProc @p1 = 'val1', @p2 = 42", withBrackets);
+    expect(result).toContain('[dbo].[myProc]');
+    expect(result).toContain("@p1 = 'val1'");
+  });
+});

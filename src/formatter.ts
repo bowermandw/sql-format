@@ -554,12 +554,14 @@ class Formatter {
   private formatRawToken(node: RawTokenNode): string {
     let s = this.tokenValue(node.token);
     if (node.extraTokens) {
-      for (const t of node.extraTokens) {
+      for (let i = 0; i < node.extraTokens.length; i++) {
+        const t = node.extraTokens[i];
         // Preserve dots without spaces (qualified names)
         if (t.type === TokenType.Dot) {
           s += '.';
         } else if (s.endsWith('.')) {
-          s += this.tokenValue(t);
+          // Token after a dot is an identifier part
+          s += this.formatIdentifierPart(t);
         } else if (t.type === TokenType.Comma) {
           s += ',';
         } else if (t.type === TokenType.Equals) {
@@ -568,6 +570,10 @@ class Formatter {
           s += ' (';
         } else if (t.type === TokenType.RightParen) {
           s += ')';
+        } else if ((t.type === TokenType.Word && !t.value.startsWith('@') || t.type === TokenType.QuotedIdentifier) &&
+                   i + 1 < node.extraTokens.length && node.extraTokens[i + 1].type === TokenType.Dot) {
+          // Token before a dot is an identifier part (e.g. schema name)
+          s += ' ' + this.formatIdentifierPart(t);
         } else {
           s += ' ' + this.tokenValue(t);
         }
