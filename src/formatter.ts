@@ -1171,7 +1171,9 @@ class Formatter {
 
     if (node.values) {
       lines.push(indent + this.kw('VALUES'));
-      for (const row of node.values.rows) {
+      for (let ri = 0; ri < node.values.rows.length; ri++) {
+        const row = node.values.rows[ri];
+        const rowComma = ri < node.values.rows.length - 1 ? ',' : '';
         const hasComments = row.some(v => (v as any)._trailingComment);
         if (hasComments) {
           // Format each value on its own line with comments
@@ -1204,9 +1206,9 @@ class Formatter {
             }
             lines.push(valueLine);
           }
-          lines.push(indent + ')');
+          lines.push(indent + ')' + rowComma);
         } else {
-          lines.push(indent + '(' + row.map(v => this.formatNode(v)).join(', ') + ')');
+          lines.push(indent + '(' + row.map(v => this.formatNode(v)).join(', ') + ')' + rowComma);
         }
       }
     }
