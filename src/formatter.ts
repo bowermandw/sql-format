@@ -1320,6 +1320,13 @@ class Formatter {
     }
     this.indent--;
 
+    const endComments = this.formatTokenLeadingComments(node.endToken, this.indent + 1);
+    if (endComments) {
+      if (preserve && node.endToken.precedingBlankLine) {
+        lines.push('');
+      }
+      lines.push(endComments.replace(/\n$/, ''));
+    }
     lines.push(indent + this.kw('END'));
     return lines.join('\n');
   }

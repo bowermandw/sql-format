@@ -66,3 +66,27 @@ describe('controlFlow.collapseShortStatements', () => {
     expect(ifLine).toContain("PRINT 'yes'");
   });
 });
+
+// ---- Comments before END ----
+
+describe('comments before END keyword', () => {
+  it('preserves comments before END in BEGIN/END block', () => {
+    const sql = 'BEGIN\nSELECT 1\n-- comment before end\nEND';
+    const result = formatSQL(sql);
+    expect(result).toContain('-- comment before end');
+    expect(result).toContain('END');
+  });
+
+  it('preserves blank line before comments before END', () => {
+    const sql = 'BEGIN\nSELECT 1\n\n-- comment 1\n-- comment 2\nEND';
+    const result = formatSQL(sql);
+    expect(result).toContain('-- comment 1');
+    expect(result).toContain('-- comment 2');
+    // Blank line should be preserved before the comments
+    const lines = result.split('\n');
+    const selectIdx = lines.findIndex(l => l.includes('SELECT'));
+    const commentIdx = lines.findIndex(l => l.includes('-- comment 1'));
+    expect(lines[selectIdx + 1]).toBe('');
+    expect(commentIdx).toBe(selectIdx + 2);
+  });
+});
