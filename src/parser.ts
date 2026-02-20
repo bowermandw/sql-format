@@ -6,7 +6,7 @@ import {
   RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode,
   InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode,
   ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode,
-  PivotNode,
+  AlterTableNode, PivotNode,
 } from './ast';
 
 export function parse(tokens: Token[]): BatchNode {
@@ -256,6 +256,10 @@ class Parser {
 
     if (this.isWord('TABLE')) {
       keywords.push(this.advance());
+      // ALTER TABLE gets its own parser (not CREATE TABLE)
+      if (keywords[0].value.toUpperCase() === 'ALTER' && keywords.length === 2) {
+        return this.parseAlterTable(keywords);
+      }
       return this.parseCreateTable(keywords);
     }
 
@@ -376,6 +380,41 @@ class Parser {
     }
 
     return { type: 'createTable', keywords, name, columns, onFilegroup };
+  }
+
+  private parseAlterTable(keywords: Token[]): AlterTableNode {
+    const name = this.parseQualifiedName();
+    const action: Token[] = [];
+    while (!this.isEOF() && !this.isType(TokenType.Semicolon) && !this.isType(TokenType.BatchSeparator) && !this.isAlterTableEnd()) {
+      action.push(this.advance());
+    }
+    return { type: 'alterTable', keywords, name, action };
+  }
+
+  /** Check if we've reached the end of an ALTER TABLE statement.
+   *  Unlike isStatementEnd, this doesn't stop at DROP/ALTER/WITH/SET
+   *  which can be part of ALTER TABLE actions. */
+  private isAlterTableEnd(): boolean {
+    if (this.isEOF()) return true;
+    if (this.isWord('END') || this.isWord('ELSE')) return true;
+    // Check for actual new statement starts that can't be ALTER TABLE actions
+    if (this.current().type !== TokenType.Word) return false;
+    const upper = this.current().value.toUpperCase();
+    switch (upper) {
+      case 'SELECT': case 'INSERT': case 'UPDATE': case 'DELETE':
+      case 'CREATE': case 'DECLARE': case 'PRINT': case 'RETURN':
+      case 'IF': case 'WHILE': case 'BEGIN': case 'EXEC': case 'EXECUTE':
+      case 'TRUNCATE':
+        return true;
+      // ALTER at start of a new ALTER TABLE statement
+      case 'ALTER':
+        return this.isWordAt(1, 'TABLE') || this.isWordAt(1, 'PROCEDURE') || this.isWordAt(1, 'PROC');
+      // DROP as start of a new DROP TABLE statement
+      case 'DROP':
+        return this.isWordAt(1, 'TABLE') || this.isWordAt(1, 'INDEX') || this.isWordAt(1, 'VIEW') || this.isWordAt(1, 'PROCEDURE') || this.isWordAt(1, 'PROC');
+      default:
+        return false;
+    }
   }
 
   private parseColumnDef(): ColumnDefNode {

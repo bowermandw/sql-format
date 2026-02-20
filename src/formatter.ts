@@ -1,5 +1,5 @@
 import { Token, TokenType } from './tokens';
-import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, ConstraintNode, PivotNode } from './ast';
+import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode } from './ast';
 import { FormatConfig } from './config';
 import { caseWord, categorizeWord } from './casing';
 
@@ -90,6 +90,7 @@ class Formatter {
       case 'rawToken':
       case 'dropTable':
       case 'createTable':
+      case 'alterTable':
         return true;
       default:
         return false;
@@ -113,6 +114,7 @@ class Formatter {
       case 'createProcedure': return node.keywords[0];
       case 'createTable': return node.keywords[0];
       case 'dropTable': return node.keywords[0];
+      case 'alterTable': return node.keywords[0];
       case 'case': return node.caseToken;
       case 'identifier': {
         if (node.parts.length === 0 && (node as any)._expression) {
@@ -223,6 +225,7 @@ class Formatter {
       case 'createProcedure': return this.formatCreateProcedure(node);
       case 'createTable': return this.formatCreateTable(node);
       case 'dropTable': return this.formatDropTable(node);
+      case 'alterTable': return this.formatAlterTable(node);
       case 'select': return this.formatSelect(node);
       case 'insert': return this.formatInsert(node);
       case 'update': return this.formatUpdate(node);
@@ -356,6 +359,42 @@ class Formatter {
     const kw = node.keywords.map(t => this.kw(t.value)).join(' ');
     const name = this.formatNode(node.name);
     return `${indent}${kw} ${name}`;
+  }
+
+  // --- ALTER TABLE ---
+
+  private formatAlterTable(node: AlterTableNode): string {
+    const indent = this.indentStr();
+    const kw = node.keywords.map(t => this.kw(t.value)).join(' ');
+    const name = this.formatNode(node.name);
+
+    // Format action tokens with proper spacing
+    const parts: string[] = [];
+    for (let i = 0; i < node.action.length; i++) {
+      const t = node.action[i];
+      if (t.type === TokenType.LeftParen) {
+        // Remove trailing space before '(' if preceded by a keyword
+        if (parts.length > 0 && parts[parts.length - 1] === ' ') {
+          parts.pop();
+        }
+        parts.push('(');
+      } else if (t.type === TokenType.RightParen) {
+        parts.push(')');
+      } else if (t.type === TokenType.Comma) {
+        parts.push(', ');
+      } else if (t.type === TokenType.Dot) {
+        parts.push('.');
+      } else if (t.type === TokenType.Equals) {
+        parts.push(' = ');
+      } else {
+        if (parts.length > 0 && !parts[parts.length - 1].endsWith('(') && !parts[parts.length - 1].endsWith('.')) {
+          parts.push(' ');
+        }
+        parts.push(this.tokenValue(t));
+      }
+    }
+    const actionStr = parts.join('');
+    return `${indent}${kw} ${name} ${actionStr}`.trimEnd();
   }
 
   // --- CONSTRAINT ---

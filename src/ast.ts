@@ -27,6 +27,7 @@ export type SqlNode =
   | ExistsNode
   | CreateTableNode
   | DropTableNode
+  | AlterTableNode
   | ColumnDefNode
   | ConstraintNode
   | ParenGroupNode
@@ -244,6 +245,13 @@ export interface DropTableNode {
   type: 'dropTable';
   keywords: Token[];         // DROP, TABLE, IF, EXISTS
   name: SqlNode;
+}
+
+export interface AlterTableNode {
+  type: 'alterTable';
+  keywords: Token[];        // ALTER, TABLE
+  name: SqlNode;            // schema.table_name
+  action: Token[];          // remaining tokens: DROP CONSTRAINT [name], ADD col INT, etc.
 }
 
 export interface ColumnDefNode {

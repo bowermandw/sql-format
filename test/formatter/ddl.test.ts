@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { formatSQL } from '../helpers';
+import { tokenize, attachComments } from '../../src/tokenizer';
+import { parse } from '../../src/parser';
 
 // ---- ddl.alignDataTypesAndConstraints ----
 
@@ -108,5 +110,92 @@ describe('ddl.placeFirstProcedureParameterOnNewLine', () => {
     const lines = result.split('\n');
     const procLine = lines.find(l => l.includes('CREATE PROCEDURE'));
     expect(procLine).not.toContain('@a');
+  });
+});
+
+// ---- ALTER TABLE ----
+
+describe('ALTER TABLE', () => {
+  it('DROP CONSTRAINT', () => {
+    const result = formatSQL('alter table dbo.Orders drop constraint FK_Orders_Customers');
+    expect(result).toContain('ALTER TABLE dbo.Orders DROP CONSTRAINT FK_Orders_Customers');
+  });
+
+  it('ADD CONSTRAINT FOREIGN KEY with REFERENCES', () => {
+    const result = formatSQL('alter table dbo.Orders add constraint FK_Orders_Customers foreign key (CustomerID) references dbo.Customers (CustomerID)');
+    expect(result).toContain('ALTER TABLE dbo.Orders ADD CONSTRAINT FK_Orders_Customers FOREIGN KEY(CustomerID) REFERENCES dbo.Customers(CustomerID)');
+  });
+
+  it('ADD CONSTRAINT PRIMARY KEY', () => {
+    const result = formatSQL('alter table dbo.Orders add constraint PK_Orders primary key (OrderID)');
+    expect(result).toContain('ALTER TABLE dbo.Orders ADD CONSTRAINT PK_Orders PRIMARY KEY(OrderID)');
+  });
+
+  it('ADD CONSTRAINT UNIQUE', () => {
+    const result = formatSQL('alter table dbo.t add constraint UQ_t_col unique (col)');
+    expect(result).toContain('ALTER TABLE dbo.t ADD CONSTRAINT UQ_t_col UNIQUE(col)');
+  });
+
+  it('ADD CONSTRAINT CHECK', () => {
+    const result = formatSQL('alter table dbo.t add constraint CK_t_val check (val > 0)');
+    expect(result).toContain('ALTER TABLE dbo.t ADD CONSTRAINT CK_t_val CHECK(val > 0)');
+  });
+
+  it('ADD CONSTRAINT DEFAULT', () => {
+    const result = formatSQL('alter table dbo.t add constraint DF_t_col default 0 for col');
+    expect(result).toContain('ALTER TABLE dbo.t ADD CONSTRAINT DF_t_col DEFAULT 0 FOR col');
+  });
+
+  it('ADD column', () => {
+    const result = formatSQL('alter table dbo.t add NewCol INT not null');
+    expect(result).toContain('ALTER TABLE dbo.t ADD NewCol INT NOT NULL');
+  });
+
+  it('DROP COLUMN', () => {
+    const result = formatSQL('alter table dbo.t drop column OldCol');
+    expect(result).toContain('ALTER TABLE dbo.t DROP COLUMN OldCol');
+  });
+
+  it('ALTER COLUMN', () => {
+    const result = formatSQL('alter table dbo.t alter column col VARCHAR(100) not null');
+    expect(result).toContain('ALTER TABLE dbo.t ALTER COLUMN col VARCHAR(100) NOT NULL');
+  });
+
+  it('ENABLE TRIGGER', () => {
+    const result = formatSQL('alter table dbo.t enable trigger TR_t');
+    expect(result).toContain('ALTER TABLE dbo.t ENABLE TRIGGER TR_t');
+  });
+
+  it('DISABLE TRIGGER ALL', () => {
+    const result = formatSQL('alter table dbo.t disable trigger all');
+    expect(result).toContain('ALTER TABLE dbo.t DISABLE TRIGGER ALL');
+  });
+
+  it('WITH CHECK CHECK CONSTRAINT', () => {
+    const result = formatSQL('alter table dbo.t with check check constraint FK_t_ref');
+    expect(result).toContain('ALTER TABLE dbo.t WITH CHECK CHECK CONSTRAINT FK_t_ref');
+  });
+
+  it('NOCHECK CONSTRAINT ALL', () => {
+    const result = formatSQL('alter table dbo.t nocheck constraint all');
+    expect(result).toContain('ALTER TABLE dbo.t NOCHECK CONSTRAINT ALL');
+  });
+
+  it('parses as alterTable node type', () => {
+    const tokens = attachComments(tokenize('ALTER TABLE dbo.t DROP COLUMN col'));
+    const ast = parse(tokens);
+    expect(ast.batches[0].statements[0].type).toBe('alterTable');
+  });
+
+  it('inserts semicolon when configured', () => {
+    const result = formatSQL('alter table dbo.t drop column col', {
+      whitespace: { insertSemicolons: 'insert' },
+    });
+    expect(result.trim()).toMatch(/;$/);
+  });
+
+  it('handles schema-qualified table names with brackets', () => {
+    const result = formatSQL('alter table [dbo].[Orders] drop constraint [FK_Orders]');
+    expect(result).toContain('ALTER TABLE [dbo].[Orders] DROP CONSTRAINT [FK_Orders]');
   });
 });
