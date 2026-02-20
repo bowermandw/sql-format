@@ -1015,6 +1015,18 @@ describe('comments before closing paren', () => {
     const result = formatSQL(`SELECT a.column_1 FROM dbo.table_name_1 a LEFT OUTER JOIN (SELECT id FROM dbo.table_name_2\n-- AND active = 1\n) b ON a.id = b.id`);
     expect(result).toContain('-- AND active = 1');
   });
+
+  it('preserves comment between JOIN clauses', () => {
+    const sql = `SELECT * FROM dbo.tbl1 a LEFT OUTER JOIN dbo.tbl2 b ON a.col1 = b.col1\n/* comment between joins */\nCROSS APPLY (SELECT * FROM dbo.tbl3) AS x`;
+    const result = formatSQL(sql);
+    expect(result).toContain('/* comment between joins */');
+  });
+
+  it('preserves comment inside subquery paren group', () => {
+    const sql = `SELECT * FROM dbo.tbl1 a CROSS APPLY (\n/* inner comment */\nSELECT * FROM dbo.tbl2) AS x`;
+    const result = formatSQL(sql);
+    expect(result).toContain('/* inner comment */');
+  });
 });
 
 // ---- CREATE TABLE with CONSTRAINT ----

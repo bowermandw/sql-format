@@ -934,21 +934,28 @@ class Formatter {
     const clauseIndent = this.indentStr(bi + 1);
     const joinKw = node.joinKeywords.map(t => this.kw(t.value)).join(' ');
     const tableNode = node.table;
+    // Emit leading comments on the first join keyword (e.g. /* comment */ before CROSS APPLY)
+    const joinComments = this.formatTokenLeadingComments(node.joinKeywords[0], bi + 1);
     let line: string;
+    if (joinComments) {
+      line = joinComments.trimEnd() + '\n';
+    } else {
+      line = '';
+    }
     if (tableNode.type === 'parenGroup' && tableNode.inner.length === 1 && tableNode.inner[0].type === 'select') {
       const formatted = this.formatParenGroup(tableNode, bi + 1);
       if (formatted.includes('\n')) {
         // Multi-line subquery: put on next line
-        line = clauseIndent + joinKw + '\n' + clauseIndent + formatted;
+        line += clauseIndent + joinKw + '\n' + clauseIndent + formatted;
       } else {
         // Collapsed subquery: keep on same line
-        line = clauseIndent + joinKw + ' ' + formatted;
+        line += clauseIndent + joinKw + ' ' + formatted;
       }
     } else if (tableAlignWidth !== undefined && tableNode.type === 'identifier') {
       const localAlignWidth = tableAlignWidth - (joinKw.length + 1);
-      line = clauseIndent + joinKw + ' ' + this.formatIdentifier(tableNode as IdentifierNode, localAlignWidth > 0 ? localAlignWidth : undefined);
+      line += clauseIndent + joinKw + ' ' + this.formatIdentifier(tableNode as IdentifierNode, localAlignWidth > 0 ? localAlignWidth : undefined);
     } else {
-      line = clauseIndent + joinKw + ' ' + this.formatNode(tableNode);
+      line += clauseIndent + joinKw + ' ' + this.formatNode(tableNode);
     }
     if (node.on) {
       const onIndent = this.indentStr(bi + 2);
@@ -2198,10 +2205,12 @@ class Formatter {
       const indent = this.indentStr(bi);
       const dml = this.config.dml;
       const alias = this.formatParenGroupAlias(node);
+      const innerSelect = node.inner[0] as SelectNode;
+      const hasInnerComments = !!innerSelect.selectToken?.leadingComments?.length;
 
-      // Try collapsing the subquery if configured (skip collapse if pivot or close comments attached)
-      if (dml.collapseShortSubqueries && !node.pivot && !node.closeComments?.length) {
-        const collapsed = this.collapseSelect(node.inner[0] as SelectNode);
+      // Try collapsing the subquery if configured (skip collapse if pivot, close comments, or inner leading comments)
+      if (dml.collapseShortSubqueries && !node.pivot && !node.closeComments?.length && !hasInnerComments) {
+        const collapsed = this.collapseSelect(innerSelect);
         if (('(' + collapsed + ')' + alias).length <= dml.collapseSubqueriesShorterThan) {
           return '(' + collapsed + ')' + alias;
         }
@@ -2212,12 +2221,14 @@ class Formatter {
       const savedThreshold = dml.collapseStatementsShorterThan;
       (this.config.dml as any).collapseShortStatements = dml.collapseShortSubqueries;
       (this.config.dml as any).collapseStatementsShorterThan = dml.collapseSubqueriesShorterThan;
+      const innerComments = this.formatTokenLeadingComments(innerSelect.selectToken, bi + 1);
       const innerFormatted = this.formatNode(node.inner[0], bi + 1);
       (this.config.dml as any).collapseShortStatements = savedCollapse;
       (this.config.dml as any).collapseStatementsShorterThan = savedThreshold;
 
       const closeCommentStr = this.formatCloseComments(node.closeComments, bi);
-      return '(\n' + innerFormatted + closeCommentStr + '\n' + indent + ')' + alias + pivotSuffix;
+      const innerContent = innerComments ? innerComments.trimEnd() + '\n' + innerFormatted : innerFormatted;
+      return '(\n' + innerContent + closeCommentStr + '\n' + indent + ')' + alias + pivotSuffix;
     }
 
     const inner = node.inner.map(n => this.formatNode(n)).join(', ');
