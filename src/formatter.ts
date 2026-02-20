@@ -727,7 +727,9 @@ class Formatter {
       const onLine = onIndent + onPrefix + condStr;
 
       if (this.config.whitespace.wrapLongLines && onLine.length > this.config.whitespace.wrapLinesLongerThan) {
-        const condFormatted = this.formatCondition(node.on.condition, bi + 2);
+        const condFormatted = this.config.operators.comparison.align
+          ? this.formatConditionAligned(node.on.condition, bi + 2, onPrefix.length)
+          : this.formatCondition(node.on.condition, bi + 2);
         line += '\n' + onIndent + onPrefix + condFormatted;
       } else {
         line += '\n' + onLine;
@@ -771,6 +773,12 @@ class Formatter {
       const expr = node as ExpressionNode;
       const opUpper = expr.operator.value.toUpperCase();
       if (opUpper === 'AND' || opUpper === 'OR') {
+        // If comparison alignment is enabled, collect all conditions in the
+        // AND/OR chain and pad the left-hand sides of comparison expressions
+        // so that the comparison operators (=, <, >, etc.) line up vertically.
+        if (this.config.operators.comparison.align) {
+          return this.formatConditionAligned(node, indentLevel, 0);
+        }
         const left = this.formatCondition(expr.left, indentLevel);
         const right = this.formatCondition(expr.right, indentLevel);
         const indent = this.indentStr(indentLevel);
@@ -779,6 +787,107 @@ class Formatter {
       }
     }
     return this.formatNode(node);
+  }
+
+  /**
+   * Collect leaf conditions from an AND/OR chain, compute the max left-hand
+   * width of comparison expressions, and format with padding to align
+   * comparison operators vertically.
+   */
+  private formatConditionAligned(node: SqlNode, indentLevel: number, initialPrefixWidth: number): string {
+    const items: { node: SqlNode; op: string; opComments: string; parenthesized: boolean }[] = [];
+    this.collectConditionChain(node, items, indentLevel);
+
+    // For each leaf, compute the formatted left-hand side of comparisons
+    const COMPARISON_OPS = ['=', '<', '>', '<=', '>=', '<>', '!='];
+    const formattedItems: { left: string; op: string; right: string; isComparison: boolean; logicalOp: string; opComments: string }[] = [];
+
+    for (const item of items) {
+      let innerNode = item.node;
+      let parenthesized = item.parenthesized || (innerNode as any)._parenthesized;
+      if (innerNode.type === 'expression') {
+        const expr = innerNode as ExpressionNode;
+        if (COMPARISON_OPS.includes(expr.operator.value)) {
+          const left = this.maybeParenthesize(expr.left, this.formatNode(expr.left));
+          const right = this.maybeParenthesize(expr.right, this.formatNode(expr.right));
+          const op = this.tokenValue(expr.operator);
+          let leftStr = left;
+          let rightStr = op + ' ' + right;
+          if (parenthesized) {
+            leftStr = '(' + leftStr;
+            rightStr = rightStr + ')';
+          }
+          formattedItems.push({ left: leftStr, op, right: rightStr, isComparison: true, logicalOp: item.op, opComments: item.opComments });
+          continue;
+        }
+      }
+      // Non-comparison leaf — format normally
+      let formatted = this.formatNode(innerNode);
+      if (parenthesized) formatted = '(' + formatted + ')';
+      formattedItems.push({ left: formatted, op: '', right: '', isComparison: false, logicalOp: item.op, opComments: item.opComments });
+    }
+
+    // Find max total width (prefix + left-hand side) among comparison
+    // expressions so that the comparison operators align vertically.
+    // The first item uses initialPrefixWidth (e.g. width of "ON ") while
+    // subsequent items use their logical operator prefix width (e.g. "AND ").
+    let maxTotalWidth = 0;
+    for (let i = 0; i < formattedItems.length; i++) {
+      const item = formattedItems[i];
+      if (item.isComparison) {
+        const prefixWidth = i === 0 ? initialPrefixWidth : (item.logicalOp ? item.logicalOp.length + 1 : 0);
+        const totalWidth = prefixWidth + item.left.length;
+        if (totalWidth > maxTotalWidth) {
+          maxTotalWidth = totalWidth;
+        }
+      }
+    }
+
+    // Build output
+    const indent = this.indentStr(indentLevel);
+    let result = '';
+    for (let i = 0; i < formattedItems.length; i++) {
+      const item = formattedItems[i];
+      const prefixWidth = i === 0 ? initialPrefixWidth : (item.logicalOp ? item.logicalOp.length + 1 : 0);
+      if (i > 0) {
+        result += '\n' + (item.opComments ? item.opComments : '') + indent + this.kw(item.logicalOp) + ' ';
+      }
+      if (item.isComparison) {
+        const targetLeftWidth = maxTotalWidth - prefixWidth;
+        const padded = item.left + ' '.repeat(Math.max(0, targetLeftWidth - item.left.length));
+        result += padded + ' ' + item.right;
+      } else {
+        result += item.left;
+      }
+    }
+    return result;
+  }
+
+  /** Flatten an AND/OR chain into a list of leaf condition nodes. */
+  private collectConditionChain(
+    node: SqlNode,
+    items: { node: SqlNode; op: string; opComments: string; parenthesized: boolean }[],
+    indentLevel: number,
+  ): void {
+    const parenthesized = !!(node as any)._parenthesized;
+    if (node.type === 'expression') {
+      const expr = node as ExpressionNode;
+      const opUpper = expr.operator.value.toUpperCase();
+      if ((opUpper === 'AND' || opUpper === 'OR') && !parenthesized) {
+        this.collectConditionChain(expr.left, items, indentLevel);
+        const opComments = this.formatTokenLeadingComments(expr.operator, indentLevel);
+        // For the right side, push with this logical op
+        const rightItems: { node: SqlNode; op: string; opComments: string; parenthesized: boolean }[] = [];
+        this.collectConditionChain(expr.right, rightItems, indentLevel);
+        if (rightItems.length > 0) {
+          rightItems[0].op = opUpper;
+          rightItems[0].opComments = opComments;
+          items.push(...rightItems);
+        }
+        return;
+      }
+    }
+    items.push({ node, op: '', opComments: '', parenthesized });
   }
 
   // --- GROUP BY ---

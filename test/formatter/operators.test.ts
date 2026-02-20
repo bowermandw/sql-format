@@ -112,3 +112,52 @@ describe('operators.in.addSpaceAroundInContents', () => {
     expect(result).toContain('IN ( 1, 2 )');
   });
 });
+
+// ---- operators.comparison.align ----
+
+describe('operators.comparison.align', () => {
+  const alignOn = {
+    dml: { collapseShortStatements: false, collapseShortSubqueries: false },
+    operators: { comparison: { align: true, addSpacesAroundComparisonOperators: true, addSpacesAroundArithmeticOperators: true }, andOr: { placeOnNewLine: 'always', alignment: 'indented', placeBeforeCondition: true }, between: { placeOnNewLine: false, placeAndKeywordOnNewLine: false, andAlignment: 'toBetween' }, in: { placeOpeningParenthesisOnNewLine: false, openingParenthesisAlignment: 'indented', placeFirstValueOnNewLine: 'never', placeSubsequentValuesOnNewLines: 'never', addSpaceAroundInContents: false } },
+  };
+  const alignOff = {
+    dml: { collapseShortStatements: false, collapseShortSubqueries: false },
+    operators: { comparison: { align: false, addSpacesAroundComparisonOperators: true, addSpacesAroundArithmeticOperators: true }, andOr: { placeOnNewLine: 'always', alignment: 'indented', placeBeforeCondition: true }, between: { placeOnNewLine: false, placeAndKeywordOnNewLine: false, andAlignment: 'toBetween' }, in: { placeOpeningParenthesisOnNewLine: false, openingParenthesisAlignment: 'indented', placeFirstValueOnNewLine: 'never', placeSubsequentValuesOnNewLines: 'never', addSpaceAroundInContents: false } },
+  };
+
+  it('aligns = in WHERE with varying left-side widths', () => {
+    const sql = 'SELECT a FROM dbo.t WHERE a.col = 1 AND a.column2 = 2 AND a.long_col_name3 = 3';
+    const result = formatSQL(sql, alignOn);
+    const lines = result.split('\n');
+    // Find lines with = and check alignment
+    const eqLines = lines.filter(l => l.includes(' = '));
+    expect(eqLines.length).toBe(3);
+    const eqPositions = eqLines.map(l => l.indexOf(' = '));
+    // All = signs should be at the same column
+    expect(eqPositions[0]).toBe(eqPositions[1]);
+    expect(eqPositions[1]).toBe(eqPositions[2]);
+  });
+
+  it('aligns = in JOIN ON conditions', () => {
+    const sql = 'SELECT a.x FROM dbo.table_one a INNER JOIN dbo.table_two b ON a.short_col = b.short_col AND a.medium_column = b.medium_column AND a.very_long_column_name = b.very_long_column_name';
+    const result = formatSQL(sql, alignOn);
+    const lines = result.split('\n');
+    const eqLines = lines.filter(l => l.includes(' = '));
+    expect(eqLines.length).toBe(3);
+    const eqPositions = eqLines.map(l => l.indexOf(' = '));
+    expect(eqPositions[0]).toBe(eqPositions[1]);
+    expect(eqPositions[1]).toBe(eqPositions[2]);
+  });
+
+  it('does not align when disabled', () => {
+    const sql = 'SELECT a FROM dbo.t WHERE a.col = 1 AND a.column2 = 2 AND a.long_col_name3 = 3';
+    const result = formatSQL(sql, alignOff);
+    const lines = result.split('\n');
+    const eqLines = lines.filter(l => l.includes(' = '));
+    expect(eqLines.length).toBe(3);
+    const eqPositions = eqLines.map(l => l.indexOf(' = '));
+    // Without alignment, the = signs should NOT all be at the same position
+    // (the left-hand sides have different widths)
+    expect(eqPositions[0] !== eqPositions[2] || eqPositions[1] !== eqPositions[2]).toBe(true);
+  });
+});
