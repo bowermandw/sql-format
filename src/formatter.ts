@@ -737,7 +737,7 @@ class Formatter {
   private collapseSelect(node: SelectNode): string {
     let s = this.kw('SELECT');
     if (node.distinct) s += ' ' + this.kw('DISTINCT');
-    if (node.top) s += ' ' + this.kw('TOP') + '(' + this.formatNode(node.top.value) + ')';
+    if (node.top) s += ' ' + this.kw('TOP') + ' (' + this.formatNode(node.top.value) + ')';
     s += ' ' + node.columns.map(c => this.formatSelectItem(c)).join(', ');
     if (node.from) {
       s += ' ' + this.kw('FROM') + ' ' + this.formatNode(node.from.source);

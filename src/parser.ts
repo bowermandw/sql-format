@@ -647,9 +647,9 @@ class Parser {
     return ['FROM', 'WHERE', 'GROUP', 'ORDER', 'HAVING', 'INTO', 'UNION',
             'EXCEPT', 'INTERSECT', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL',
             'CROSS', 'ON', 'SET', 'VALUES', 'END', 'ELSE', 'WHEN', 'THEN',
-            'AS', 'GO', 'BEGIN', 'IF', 'DECLARE', 'PRINT', 'RETURN', 'EXEC',
+            'AS', 'GO', 'BEGIN', 'IF', 'WHILE', 'DECLARE', 'PRINT', 'RETURN', 'EXEC',
             'EXECUTE', 'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP',
-            'FOR', 'PIVOT', 'UNPIVOT'].includes(val);
+            'TRUNCATE', 'WITH', 'FOR', 'PIVOT', 'UNPIVOT'].includes(val);
   }
 
   // --- FROM / JOIN ---

@@ -740,6 +740,26 @@ HAVING COUNT(*) > 1`;
     expect(result).toContain('= 1 -- remove');
   });
 
+  it('does not parse TRUNCATE as table alias after FROM', () => {
+    const sql = `SELECT TOP (10) * FROM dbo.table_name\n\n-- Some Comment\nTRUNCATE TABLE dbo.table_name_2;\nEXECUTE dbo.stored_proc_name_1;`;
+    const result = formatSQL(sql);
+    expect(result).toContain('SELECT TOP (10) * FROM dbo.table_name');
+    expect(result).toContain('-- Some Comment');
+    expect(result).toContain('TRUNCATE TABLE dbo.table_name_2');
+    expect(result).toContain('EXECUTE dbo.stored_proc_name_1');
+  });
+
+  it('does not parse WHILE or WITH as table alias', () => {
+    const sql = 'SELECT * FROM dbo.t\nWHILE @i < 10 SET @i = @i + 1';
+    const result = formatSQL(sql);
+    expect(result).toContain('FROM');
+    expect(result).toContain('dbo.t');
+    expect(result).toContain('WHILE');
+    // WHILE should not appear as an alias on the same line as FROM
+    const fromLine = result.split('\n').find(l => l.includes('dbo.t'));
+    expect(fromLine).not.toContain('WHILE');
+  });
+
   it('does not insert blank lines between comments with CRLF input', () => {
     const sql = "SELECT 1\r\nGO\r\n-- comment1\r\n-- comment2\r\n";
     const result = formatSQL(sql);
