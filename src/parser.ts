@@ -1583,17 +1583,6 @@ class Parser {
         }
         const fnNode: FunctionCallNode = { type: 'functionCall', name, args };
         if (closeComments) fnNode.closeComments = closeComments;
-        // WITHIN GROUP (ORDER BY ...): STRING_AGG(...) WITHIN GROUP (ORDER BY ...)
-        if (this.isWord('WITHIN') && this.isWordAt(1, 'GROUP')) {
-          const withinToken = this.advance(); // WITHIN
-          const groupToken = this.advance(); // GROUP
-          if (this.isType(TokenType.LeftParen)) {
-            this.advance(); // (
-            const orderBy = this.parseOrderBy();
-            if (this.isType(TokenType.RightParen)) this.advance(); // )
-            fnNode.withinGroup = { tokens: [withinToken, groupToken], orderBy };
-          }
-        }
         // OVER clause: SUM(...) OVER (PARTITION BY ... ORDER BY ...)
         if (this.isWord('OVER')) {
           fnNode.overClause = this.parseOverClause();
