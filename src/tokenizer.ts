@@ -354,6 +354,9 @@ export function attachComments(tokens: Token[]): Token[] {
     }
     if (sawBlankLine) {
       tok.precedingBlankLine = true;
+      if (tok.leadingComments?.length) {
+        tok.blankLineAfterLeadingComments = true;
+      }
       sawBlankLine = false;
     }
     result.push(tok);

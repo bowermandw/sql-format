@@ -227,6 +227,9 @@ class Formatter {
       }
       lines.push(indent + c.value);
     }
+    if (preserve && token.blankLineAfterLeadingComments) {
+      lines.push('');
+    }
     return lines.join('\n') + '\n';
   }
 
@@ -241,6 +244,9 @@ class Formatter {
         lines.push('');
       }
       lines.push(indent + c.value);
+    }
+    if (preserve && token.blankLineAfterLeadingComments) {
+      lines.push('');
     }
     return lines.join('\n') + '\n';
   }

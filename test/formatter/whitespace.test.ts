@@ -227,4 +227,18 @@ describe('whitespace.newLines.preserveExistingEmptyLinesBetweenComments', () => 
     // There should be a blank line between them
     expect(lines[table1Idx + 1]).toBe('');
   });
+
+  it('preserves blank line after leading comments before statement', () => {
+    const sql = '-- comment 1\n-- comment 2\n-- comment 3\n\nEXECUTE dbo.stored_proc_name';
+    const result = formatSQL(sql);
+    expect(result).toContain('-- comment 3\n\nEXECUTE');
+  });
+
+  it('collapses blank line after leading comments when option is false', () => {
+    const sql = '-- comment 1\n-- comment 2\n\nEXECUTE dbo.stored_proc_name';
+    const result = formatSQL(sql, {
+      whitespace: { newLines: { preserveExistingEmptyLinesBetweenComments: false } },
+    } as any);
+    expect(result).not.toContain('-- comment 2\n\nEXECUTE');
+  });
 });

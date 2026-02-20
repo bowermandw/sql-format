@@ -43,4 +43,6 @@ export interface Token {
   trailingComments?: Token[];
   /** Whether a blank line preceded this token in the original source */
   precedingBlankLine?: boolean;
+  /** Whether a blank line appeared between the last leading comment and this token */
+  blankLineAfterLeadingComments?: boolean;
 }
