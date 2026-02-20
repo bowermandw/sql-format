@@ -1742,7 +1742,11 @@ class Formatter {
       const outerIndent = this.indentStr(this.indent);
       // Re-format args at the inner indent level so nested constructs align
       const expanded = node.args.map((a, i) => {
-        const formatted = this.formatNode(a, this.indent + 1);
+        let formatted = this.formatNode(a, this.indent + 1);
+        // Wrap long expression arguments
+        if (a.type === 'expression') {
+          formatted = this.wrapExpression(a, this.indent + 1);
+        }
         // No comma before/after AS keyword args
         const useComma = i < node.args.length - 1 &&
           !this.isAsKeywordArg(node.args[i + 1]) && !this.isAsKeywordArg(a);
