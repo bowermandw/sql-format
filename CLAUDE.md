@@ -98,7 +98,7 @@ Key settings for line wrapping:
 
 ## Implementation Status
 
-Config options: 45 implemented / 108 total. Legend: [x] = implemented + tested, [~] = implemented but not fully functional, [ ] = not yet implemented.
+Config options: 50 implemented / 108 total. Legend: [x] = implemented + tested, [~] = implemented but not fully functional, [ ] = not yet implemented.
 
 ### whitespace (8 implemented / 10 total)
 - [x] `tabBehavior` — onlySpaces / onlyTabs / tabsWherePossible
@@ -184,15 +184,15 @@ Config options: 45 implemented / 108 total. Legend: [x] = implemented + tested, 
 - [x] `collapseShortStatements`
 - [x] `collapseStatementsShorterThan`
 
-### cte (0 implemented / 8 total)
-- [ ] `placeNameOnNewLine`
-- [ ] `indentName`
-- [ ] `placeColumnsOnNewLine`
+### cte (5 implemented / 8 total)
+- [x] `placeNameOnNewLine`
+- [x] `indentName`
+- [x] `placeColumnsOnNewLine`
 - [ ] `columnAlignment`
-- [ ] `placeAsOnNewLine`
+- [x] `placeAsOnNewLine`
 - [ ] `asAlignment`
 - [ ] `parenthesisStyle`
-- [ ] `indentContents`
+- [x] `indentContents`
 
 ### variables (1 implemented / 4 total)
 - [x] `alignDataTypesAndValues`

@@ -1302,23 +1302,56 @@ class Formatter {
 
   private formatCTE(node: CteNode): string {
     const indent = this.indentStr();
+    const cfg = this.config.cte;
+    const nameIndent = cfg.indentName ? this.indentStr(this.indent + 1) : indent;
     const lines: string[] = [];
 
     for (let i = 0; i < node.ctes.length; i++) {
       const cte = node.ctes[i];
-      const prefix = i === 0 ? this.kw('WITH') + ' ' : indent + '    ';
-      let cteLine = prefix + this.tokenValue(cte.name);
+
+      // CTE name (with optional column list and AS)
+      let namePart = this.tokenValue(cte.name);
       if (cte.columns) {
-        cteLine += ' (' + cte.columns.map(c => this.tokenValue(c)).join(', ') + ')';
+        const colList = '(' + cte.columns.map(c => this.tokenValue(c)).join(', ') + ')';
+        if (cfg.placeColumnsOnNewLine) {
+          namePart += '\n' + nameIndent + colList;
+        } else {
+          namePart += ' ' + colList;
+        }
       }
-      cteLine += ' ' + this.kw('AS');
-      lines.push(indent + cteLine);
+
+      // AS keyword
+      if (cfg.placeAsOnNewLine) {
+        namePart += '\n' + indent + this.kw('AS');
+      } else {
+        namePart += ' ' + this.kw('AS');
+      }
+
+      // WITH/comma prefix + name placement
+      if (i === 0) {
+        if (cfg.placeNameOnNewLine) {
+          lines.push(indent + this.kw('WITH'));
+          lines.push(nameIndent + namePart);
+        } else {
+          lines.push(indent + this.kw('WITH') + ' ' + namePart);
+        }
+      } else {
+        if (cfg.placeNameOnNewLine) {
+          lines.push(nameIndent + namePart);
+        } else {
+          lines.push(indent + namePart);
+        }
+      }
+
+      // CTE body parentheses
       lines.push(indent + '(');
-
-      this.indent++;
-      lines.push(this.formatNode(cte.query));
-      this.indent--;
-
+      if (cfg.indentContents) {
+        this.indent++;
+        lines.push(this.formatNode(cte.query));
+        this.indent--;
+      } else {
+        lines.push(this.formatNode(cte.query));
+      }
       lines.push(indent + ')' + (i < node.ctes.length - 1 ? ',' : ''));
     }
 
