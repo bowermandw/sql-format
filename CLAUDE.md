@@ -6,7 +6,7 @@ T-SQL formatter driven by RedGate-compatible JSON style configs.
 
 ```bash
 npm run build        # tsc → dist/
-npm run test         # vitest run (233 tests)
+npm run test         # vitest run (334 tests)
 npm run test:watch   # vitest watch mode
 ```
 
@@ -28,12 +28,12 @@ Three-stage pipeline: `SQL Text → Tokenizer → Token[] → Parser → AST (Ba
 
 | File | LOC | Purpose |
 |------|-----|---------|
-| `src/index.ts` | 205 | CLI entry point |
+| `src/index.ts` | 226 | CLI entry point |
 | `src/tokens.ts` | 46 | Token types/interfaces |
 | `src/tokenizer.ts` | 375 | Lexer: SQL → Token[] |
-| `src/parser.ts` | 1504 | Recursive descent parser: Token[] → AST |
-| `src/ast.ts` | 302 | AST node type definitions |
-| `src/formatter.ts` | 1485 | AST → formatted SQL string |
+| `src/parser.ts` | 1690 | Recursive descent parser: Token[] → AST |
+| `src/ast.ts` | 312 | AST node type definitions |
+| `src/formatter.ts` | 1874 | AST → formatted SQL string |
 | `src/config.ts` | 379 | FormatConfig types, defaults, JSON loader |
 | `src/casing.ts` | 155 | Keyword/function/datatype casing logic |
 
@@ -60,7 +60,7 @@ Three-stage pipeline: `SQL Text → Tokenizer → Token[] → Parser → AST (Ba
 
 - **Root:** `BatchNode` (contains batches separated by GO)
 - **DML:** `SelectNode`, `InsertNode`, `UpdateNode`, `DeleteNode`
-- **DDL:** `CreateTableNode`, `DropTableNode`, `CreateProcedureNode`, `ColumnDefNode`, `ConstraintNode`
+- **DDL:** `CreateTableNode`, `AlterTableNode`, `DropTableNode`, `CreateProcedureNode`, `ColumnDefNode`, `ConstraintNode`
 - **Query parts:** `CteNode`, `JoinNode`, `WhereNode`, `GroupByNode`, `OrderByNode`, `HavingNode`
 - **Control flow:** `BeginEndNode`, `IfElseNode`, `CaseNode`, `DeclareNode`, `SetNode`, `PrintNode`, `ReturnNode`
 - **Expressions:** `ExpressionNode` (binary), `FunctionCallNode`, `InExpressionNode`, `BetweenNode`, `ExistsNode`
@@ -83,6 +83,7 @@ Key settings for line wrapping:
 - `formatSelectItem()` — individual column with alias alignment; uses `wrapExpression` in expanded mode
 - `formatParenGroup()` — subquery detection & collapse/expand logic
 - `formatCase()` — CASE expression collapse/expand
+- `formatAlterTable()` — ALTER TABLE with action token reconstruction
 - `wrapExpression()` — splits binary expressions at operator boundaries when line exceeds max
 - `collapseSelect()` / `collapseJoin()` / `collapseCase()` — generate single-line versions
 
