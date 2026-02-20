@@ -13,6 +13,7 @@ import {
   BeginEndNode,
   IfElseNode,
   CreateProcedureNode,
+  SetNode,
 } from './ast';
 
 export interface Warning {
@@ -24,6 +25,7 @@ export interface Warning {
 export interface AnalyzeOptions {
   warnMissingSchema: boolean;
   warnMissingAlias: boolean;
+  warnMissingNocount: boolean;
 }
 
 export function analyze(ast: BatchNode, options: AnalyzeOptions): Warning[] {
@@ -179,6 +181,9 @@ function walkStatement(
 
     case 'createProcedure': {
       const proc = node as CreateProcedureNode;
+      if (options.warnMissingNocount) {
+        checkMissingNocount(proc, warnings);
+      }
       walkStatement(proc.body, options, warnings, cteNames);
       break;
     }
@@ -230,6 +235,41 @@ function walkExpression(
     for (const v of inExpr.values) {
       walkExpression(v, options, warnings, cteNames);
     }
+  }
+}
+
+function checkMissingNocount(proc: CreateProcedureNode, warnings: Warning[]): void {
+  // Get the top-level statements from the procedure body
+  let statements: SqlNode[] = [];
+  if (proc.body.type === 'beginEnd') {
+    statements = (proc.body as BeginEndNode).statements;
+  }
+
+  const hasNocount = statements.some(s => {
+    if (s.type !== 'set') return false;
+    const set = s as SetNode;
+    if (!set.isSpecial) return false;
+    if (set.target.type !== 'identifier') return false;
+    const target = set.target as IdentifierNode;
+    const name = target.parts[0]?.value;
+    if (!name || name.toUpperCase() !== 'NOCOUNT') return false;
+    // Check value is ON
+    if (set.value.type === 'identifier') {
+      return (set.value as IdentifierNode).parts[0]?.value.toUpperCase() === 'ON';
+    }
+    if (set.value.type === 'rawToken') {
+      return (set.value as RawTokenNode).token.value.toUpperCase() === 'ON';
+    }
+    return false;
+  });
+
+  if (!hasNocount) {
+    const procName = proc.name.type === 'identifier'
+      ? getIdentifierName(proc.name as IdentifierNode)
+      : 'unknown';
+    const line = proc.keywords[0]?.line;
+    const msg = `Warning: Stored procedure ${procName} does not contain SET NOCOUNT ON`;
+    warnings.push({ message: line ? `${msg} (line ${line})` : msg, line });
   }
 }
 

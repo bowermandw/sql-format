@@ -18,6 +18,7 @@ Options:
   -i, --in-place                          Overwrite the input file with formatted output
   -w, --warn-missing-schema               Warn when table/view/proc has no schema prefix
   -W, --warn-missing-alias                Warn when table/view has no alias
+  -N, --warn-missing-nocount              Warn when stored procedure lacks SET NOCOUNT ON
   -t, --tokens                            Print token list (debug mode)
   -a, --ast                               Print AST as JSON (debug mode)
   -h, --help                              Show this help message
@@ -39,6 +40,7 @@ function main(): void {
   let inPlace = false;
   let warnMissingSchema = false;
   let warnMissingAlias = false;
+  let warnMissingNocount = false;
   let debugTokens = false;
   let debugAst = false;
 
@@ -63,6 +65,8 @@ function main(): void {
       warnMissingSchema = true;
     } else if (arg === '--warn-missing-alias' || arg === '-W') {
       warnMissingAlias = true;
+    } else if (arg === '--warn-missing-nocount' || arg === '-N') {
+      warnMissingNocount = true;
     } else if (arg === '--tokens' || arg === '-t') {
       debugTokens = true;
     } else if (arg === '--ast' || arg === '-a') {
@@ -169,8 +173,8 @@ function main(): void {
   }
 
   // Analyze for warnings
-  if (warnMissingSchema || warnMissingAlias) {
-    const warnings = analyze(ast, { warnMissingSchema, warnMissingAlias });
+  if (warnMissingSchema || warnMissingAlias || warnMissingNocount) {
+    const warnings = analyze(ast, { warnMissingSchema, warnMissingAlias, warnMissingNocount });
     for (const w of warnings) {
       console.warn(w.message);
     }

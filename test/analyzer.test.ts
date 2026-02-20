@@ -3,12 +3,13 @@ import { tokenize, attachComments } from '../src/tokenizer';
 import { parse } from '../src/parser';
 import { analyze, Warning } from '../src/analyzer';
 
-function getWarnings(sql: string, opts: { schema?: boolean; alias?: boolean } = {}): Warning[] {
+function getWarnings(sql: string, opts: { schema?: boolean; alias?: boolean; nocount?: boolean } = {}): Warning[] {
   const tokens = attachComments(tokenize(sql));
   const ast = parse(tokens);
   return analyze(ast, {
     warnMissingSchema: opts.schema ?? false,
     warnMissingAlias: opts.alias ?? false,
+    warnMissingNocount: opts.nocount ?? false,
   });
 }
 
@@ -163,8 +164,66 @@ describe('analyzer', () => {
     });
   });
 
+  describe('missing SET NOCOUNT ON warnings', () => {
+    it('warns when stored procedure lacks SET NOCOUNT ON', () => {
+      const sql = `CREATE PROCEDURE dbo.MyProc
+AS
+BEGIN
+  SELECT 1
+END`;
+      const warnings = getWarnings(sql, { nocount: true });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).toContain('does not contain SET NOCOUNT ON');
+      expect(warnings[0].message).toContain('dbo.MyProc');
+    });
+
+    it('does not warn when SET NOCOUNT ON is present', () => {
+      const sql = `CREATE PROCEDURE dbo.MyProc
+AS
+BEGIN
+  SET NOCOUNT ON
+  SELECT 1
+END`;
+      const warnings = getWarnings(sql, { nocount: true });
+      expect(warnings).toHaveLength(0);
+    });
+
+    it('warns when SET NOCOUNT OFF is used instead', () => {
+      const sql = `CREATE PROCEDURE dbo.MyProc
+AS
+BEGIN
+  SET NOCOUNT OFF
+  SELECT 1
+END`;
+      const warnings = getWarnings(sql, { nocount: true });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).toContain('does not contain SET NOCOUNT ON');
+    });
+
+    it('does not warn when option is disabled', () => {
+      const sql = `CREATE PROCEDURE dbo.MyProc
+AS
+BEGIN
+  SELECT 1
+END`;
+      const warnings = getWarnings(sql, { nocount: false });
+      expect(warnings).toHaveLength(0);
+    });
+
+    it('includes line number in warning', () => {
+      const sql = `CREATE PROCEDURE dbo.MyProc
+AS
+BEGIN
+  SELECT 1
+END`;
+      const warnings = getWarnings(sql, { nocount: true });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).toMatch(/\(line \d+\)/);
+    });
+  });
+
   describe('no warnings when disabled', () => {
-    it('produces no warnings when both options are false', () => {
+    it('produces no warnings when all options are false', () => {
       const warnings = getWarnings('SELECT * FROM table_name');
       expect(warnings).toHaveLength(0);
     });
