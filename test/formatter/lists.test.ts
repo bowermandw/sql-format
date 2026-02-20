@@ -132,3 +132,66 @@ describe('lists.alignComments', () => {
     expect(result).toContain('-- short comment');
   });
 });
+
+// ---- lists.alignAliases (table aliases in FROM/JOIN) ----
+
+describe('lists.alignAliases for table aliases', () => {
+  const base = {
+    lists: { placeFirstItemOnNewLine: 'always', placeSubsequentItemsOnNewLines: 'always', alignSubsequentItemsWithFirstItem: false, alignItemsAcrossClauses: false, indentListItems: true, alignItemsToTabStops: false, alignAliases: true, alignComments: false, commas: { placeCommasBeforeItems: false, commaAlignment: 'beforeItem', addSpaceBeforeComma: false, addSpaceAfterComma: true } },
+    dml: { collapseShortStatements: false },
+  };
+
+  it('aligns AS keywords across FROM source and INNER JOIN', () => {
+    const sql = 'SELECT * FROM dbo.table_name_1 AS [a] INNER JOIN [dbo].[tbl2] AS [b] ON a.col1 = b.col1';
+    const result = formatSQL(sql, base);
+    const lines = result.split('\n');
+    const fromLine = lines.find(l => l.includes('dbo.table_name_1'))!;
+    const joinLine = lines.find(l => l.includes('INNER JOIN'))!;
+    const fromAsPos = fromLine.indexOf(' AS ');
+    const joinAsPos = joinLine.indexOf(' AS ');
+    expect(fromAsPos).toBeGreaterThan(0);
+    expect(joinAsPos).toBeGreaterThan(0);
+    expect(fromAsPos).toBe(joinAsPos);
+  });
+
+  it('aligns across multiple JOINs with different keyword lengths', () => {
+    const sql = 'SELECT * FROM dbo.t1 AS a INNER JOIN dbo.t2 AS b ON a.id = b.id LEFT OUTER JOIN dbo.t3 AS c ON a.id = c.id';
+    const result = formatSQL(sql, base);
+    const lines = result.split('\n');
+    const fromLine = lines.find(l => l.includes('dbo.t1'))!;
+    const innerLine = lines.find(l => l.includes('INNER JOIN'))!;
+    const leftLine = lines.find(l => l.includes('LEFT OUTER JOIN'))!;
+    const fromAsPos = fromLine.indexOf(' AS ');
+    const innerAsPos = innerLine.indexOf(' AS ');
+    const leftAsPos = leftLine.indexOf(' AS ');
+    expect(fromAsPos).toBe(innerAsPos);
+    expect(fromAsPos).toBe(leftAsPos);
+  });
+
+  it('does not crash when table has no alias', () => {
+    const sql = 'SELECT * FROM dbo.table_name_1 INNER JOIN dbo.tbl2 AS b ON table_name_1.col1 = b.col1';
+    const result = formatSQL(sql, base);
+    expect(result).toContain('dbo.table_name_1');
+    expect(result).toContain('AS b');
+  });
+
+  it('does not align when alignAliases is false', () => {
+    const sql = 'SELECT * FROM dbo.table_name_1 AS [a] INNER JOIN [dbo].[tbl2] AS [b] ON a.col1 = b.col1';
+    const result = formatSQL(sql, { ...base, lists: { ...base.lists, alignAliases: false } });
+    const lines = result.split('\n');
+    const fromLine = lines.find(l => l.includes('dbo.table_name_1'))!;
+    const joinLine = lines.find(l => l.includes('INNER JOIN'))!;
+    const fromAsPos = fromLine.indexOf(' AS ');
+    const joinAsPos = joinLine.indexOf(' AS ');
+    // They should NOT be aligned (different positions)
+    expect(fromAsPos).not.toBe(joinAsPos);
+  });
+
+  it('does not add padding with single FROM and no JOINs', () => {
+    const sql = 'SELECT * FROM dbo.table_name_1 AS a';
+    const result = formatSQL(sql, base);
+    const fromLine = result.split('\n').find(l => l.includes('dbo.table_name_1'))!;
+    // No extra spaces before AS
+    expect(fromLine).toMatch(/dbo\.table_name_1 AS a/);
+  });
+});

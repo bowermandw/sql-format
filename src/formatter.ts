@@ -735,13 +735,36 @@ class Formatter {
       if (fromComments) lines.push(fromComments.trimEnd());
       lines.push(indent + this.kw('FROM'));
       const source = node.from.source;
+
+      // Compute table alias alignment width across FROM source and JOINs
+      let tableAlignWidth: number | undefined;
+      if (this.config.lists.alignAliases && node.from.joins.length > 0) {
+        let maxWidth = 0;
+        // FROM source (no prefix)
+        if (source.type === 'identifier' && (source as IdentifierNode).alias) {
+          maxWidth = this.getTableNameLength(source);
+        }
+        // JOINs
+        for (const join of node.from.joins) {
+          if (join.table.type === 'identifier' && (join.table as IdentifierNode).alias) {
+            const joinKw = join.joinKeywords.map(t => this.kw(t.value)).join(' ');
+            const prefixLen = joinKw.length + 1; // +1 for space before table name
+            const w = prefixLen + this.getTableNameLength(join.table);
+            maxWidth = Math.max(maxWidth, w);
+          }
+        }
+        if (maxWidth > 0) tableAlignWidth = maxWidth;
+      }
+
       if (source.type === 'parenGroup' && source.inner.length === 1 && source.inner[0].type === 'select') {
         lines.push(clauseIndent + this.formatParenGroup(source, baseIndent + 1));
+      } else if (tableAlignWidth !== undefined && source.type === 'identifier') {
+        lines.push(clauseIndent + this.formatIdentifier(source as IdentifierNode, tableAlignWidth));
       } else {
         lines.push(clauseIndent + this.formatNode(source));
       }
       for (const join of node.from.joins) {
-        lines.push(this.formatJoin(join, baseIndent));
+        lines.push(this.formatJoin(join, baseIndent, tableAlignWidth));
       }
     }
 
@@ -906,7 +929,7 @@ class Formatter {
 
   // --- FROM / JOIN ---
 
-  private formatJoin(node: JoinNode, baseIndent?: number): string {
+  private formatJoin(node: JoinNode, baseIndent?: number, tableAlignWidth?: number): string {
     const bi = baseIndent ?? this.indent;
     const clauseIndent = this.indentStr(bi + 1);
     const joinKw = node.joinKeywords.map(t => this.kw(t.value)).join(' ');
@@ -921,6 +944,9 @@ class Formatter {
         // Collapsed subquery: keep on same line
         line = clauseIndent + joinKw + ' ' + formatted;
       }
+    } else if (tableAlignWidth !== undefined && tableNode.type === 'identifier') {
+      const localAlignWidth = tableAlignWidth - (joinKw.length + 1);
+      line = clauseIndent + joinKw + ' ' + this.formatIdentifier(tableNode as IdentifierNode, localAlignWidth > 0 ? localAlignWidth : undefined);
     } else {
       line = clauseIndent + joinKw + ' ' + this.formatNode(tableNode);
     }
@@ -1903,8 +1929,11 @@ class Formatter {
 
   // --- Identifiers ---
 
-  private formatIdentifier(node: IdentifierNode): string {
+  private formatIdentifier(node: IdentifierNode, alignWidth?: number): string {
     let s = node.parts.map(p => this.formatIdentifierPart(p)).join('.');
+    if (node.alias && alignWidth !== undefined && alignWidth > s.length) {
+      s += ' '.repeat(alignWidth - s.length);
+    }
     if (node.alias) {
       if (node.alias.asToken) {
         s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(node.alias.name);
@@ -1916,6 +1945,14 @@ class Formatter {
       s += '\n' + this.formatPivot(node.pivot, this.indent + 1);
     }
     return s;
+  }
+
+  /** Get the formatted length of just the table name (no alias) for alignment purposes. */
+  private getTableNameLength(node: SqlNode): number {
+    if (node.type === 'identifier') {
+      return (node as IdentifierNode).parts.map(p => this.formatIdentifierPart(p)).join('.').length;
+    }
+    return 0;
   }
 
   /**
