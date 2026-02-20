@@ -6,7 +6,7 @@ T-SQL formatter driven by RedGate-compatible JSON style configs.
 
 ```bash
 npm run build        # tsc → dist/
-npm run test         # vitest run (334 tests)
+npm run test         # vitest run (352 tests)
 npm run test:watch   # vitest watch mode
 ```
 
@@ -33,7 +33,7 @@ Three-stage pipeline: `SQL Text → Tokenizer → Token[] → Parser → AST (Ba
 | `src/tokenizer.ts` | 375 | Lexer: SQL → Token[] |
 | `src/parser.ts` | 1690 | Recursive descent parser: Token[] → AST |
 | `src/ast.ts` | 312 | AST node type definitions |
-| `src/formatter.ts` | 1874 | AST → formatted SQL string |
+| `src/formatter.ts` | 2034 | AST → formatted SQL string |
 | `src/config.ts` | 379 | FormatConfig types, defaults, JSON loader |
 | `src/casing.ts` | 155 | Keyword/function/datatype casing logic |
 
@@ -98,7 +98,7 @@ Key settings for line wrapping:
 
 ## Implementation Status
 
-Config options: 42 implemented / 107 total. Legend: [x] = implemented + tested, [~] = implemented but not fully functional, [ ] = not yet implemented.
+Config options: 44 implemented / 107 total. Legend: [x] = implemented + tested, [~] = implemented but not fully functional, [ ] = not yet implemented.
 
 ### whitespace (7 implemented / 9 total)
 - [x] `tabBehavior` — onlySpaces / onlyTabs / tabsWherePossible
@@ -165,7 +165,7 @@ Config options: 42 implemented / 107 total. Legend: [x] = implemented + tested, 
 - [ ] `listItems.placeGroupByAndOrderByOnNewLine`
 - [ ] `listItems.placeInsertTableOnNewLine`
 
-### ddl (2 implemented / 10 total)
+### ddl (4 implemented / 10 total)
 - [ ] `parenthesisStyle`
 - [ ] `indentParenthesesContents`
 - [x] `alignDataTypesAndConstraints`
@@ -173,8 +173,8 @@ Config options: 42 implemented / 107 total. Legend: [x] = implemented + tested, 
 - [ ] `placeConstraintColumnsOnNewLines`
 - [ ] `indentClauses`
 - [x] `placeFirstProcedureParameterOnNewLine`
-- [ ] `collapseShortStatements`
-- [ ] `collapseStatementsShorterThan`
+- [x] `collapseShortStatements`
+- [x] `collapseStatementsShorterThan`
 
 ### controlFlow (2 implemented / 5 total)
 - [ ] `placeBeginKeywordOnNewLine`

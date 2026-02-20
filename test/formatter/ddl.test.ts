@@ -9,7 +9,7 @@ describe('ddl.alignDataTypesAndConstraints', () => {
   describe('CREATE TABLE', () => {
     it('aligns column data types when true', () => {
       const result = formatSQL('CREATE TABLE dbo.t (id INT, longcolumn VARCHAR(50))', {
-        ddl: { parenthesisStyle: 'expandedToStatement', indentParenthesesContents: true, alignDataTypesAndConstraints: true, placeConstraintsOnNewLines: true, placeConstraintColumnsOnNewLines: 'always', indentClauses: true, placeFirstProcedureParameterOnNewLine: 'always', collapseShortStatements: true, collapseStatementsShorterThan: 78 },
+        ddl: { parenthesisStyle: 'expandedToStatement', indentParenthesesContents: true, alignDataTypesAndConstraints: true, placeConstraintsOnNewLines: true, placeConstraintColumnsOnNewLines: 'always', indentClauses: true, placeFirstProcedureParameterOnNewLine: 'always', collapseShortStatements: false, collapseStatementsShorterThan: 78 },
       });
       expect(result).toContain('id         INT');
       expect(result).toContain('longcolumn VARCHAR(50)');
@@ -17,7 +17,7 @@ describe('ddl.alignDataTypesAndConstraints', () => {
 
     it('does not align column data types when false', () => {
       const result = formatSQL('CREATE TABLE dbo.t (id INT, longcolumn VARCHAR(50))', {
-        ddl: { parenthesisStyle: 'expandedToStatement', indentParenthesesContents: true, alignDataTypesAndConstraints: false, placeConstraintsOnNewLines: true, placeConstraintColumnsOnNewLines: 'always', indentClauses: true, placeFirstProcedureParameterOnNewLine: 'always', collapseShortStatements: true, collapseStatementsShorterThan: 78 },
+        ddl: { parenthesisStyle: 'expandedToStatement', indentParenthesesContents: true, alignDataTypesAndConstraints: false, placeConstraintsOnNewLines: true, placeConstraintColumnsOnNewLines: 'always', indentClauses: true, placeFirstProcedureParameterOnNewLine: 'always', collapseShortStatements: false, collapseStatementsShorterThan: 78 },
       });
       expect(result).toContain('id INT');
       expect(result).toContain('longcolumn VARCHAR(50)');
@@ -25,7 +25,7 @@ describe('ddl.alignDataTypesAndConstraints', () => {
 
     it('aligns multiple columns with varying name lengths', () => {
       const result = formatSQL('CREATE TABLE dbo.t (a INT, bb VARCHAR(50), ccc DATETIME)', {
-        ddl: { parenthesisStyle: 'expandedToStatement', indentParenthesesContents: true, alignDataTypesAndConstraints: true, placeConstraintsOnNewLines: true, placeConstraintColumnsOnNewLines: 'always', indentClauses: true, placeFirstProcedureParameterOnNewLine: 'always', collapseShortStatements: true, collapseStatementsShorterThan: 78 },
+        ddl: { parenthesisStyle: 'expandedToStatement', indentParenthesesContents: true, alignDataTypesAndConstraints: true, placeConstraintsOnNewLines: true, placeConstraintColumnsOnNewLines: 'always', indentClauses: true, placeFirstProcedureParameterOnNewLine: 'always', collapseShortStatements: false, collapseStatementsShorterThan: 78 },
       });
       // All data types should start at same column (aligned to longest name 'ccc')
       const lines = result.split('\n').filter(l => l.includes('INT') || l.includes('VARCHAR') || l.includes('DATETIME'));
@@ -53,6 +53,40 @@ describe('ddl.alignDataTypesAndConstraints', () => {
       expect(result).toContain('@a INT');
       expect(result).toContain('@longname VARCHAR(50)');
     });
+  });
+});
+
+// ---- ddl.collapseShortStatements for CREATE TABLE ----
+
+describe('ddl.collapseShortStatements for CREATE TABLE', () => {
+  const ddlConfig = {
+    ddl: { collapseShortStatements: true, collapseStatementsShorterThan: 1000 },
+  };
+
+  it('collapses short CREATE TABLE to one line', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (id INT, name VARCHAR(50))', ddlConfig);
+    expect(result.trim()).toBe('CREATE TABLE dbo.t (id INT, name VARCHAR(50))');
+  });
+
+  it('stays expanded when exceeding threshold', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (id INT, name VARCHAR(50))', {
+      ddl: { collapseShortStatements: true, collapseStatementsShorterThan: 20 },
+    });
+    const lines = result.trim().split('\n');
+    expect(lines.length).toBeGreaterThan(1);
+  });
+
+  it('stays expanded when collapse is disabled', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (id INT, name VARCHAR(50))', {
+      ddl: { collapseShortStatements: false, collapseStatementsShorterThan: 1000 },
+    });
+    const lines = result.trim().split('\n');
+    expect(lines.length).toBeGreaterThan(1);
+  });
+
+  it('collapses CREATE TABLE with constraints', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (id INT NOT NULL, name VARCHAR(50))', ddlConfig);
+    expect(result.trim()).toBe('CREATE TABLE dbo.t (id INT NOT NULL, name VARCHAR(50))');
   });
 });
 

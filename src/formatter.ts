@@ -404,6 +404,15 @@ class Formatter {
     const baseIndent = this.indentStr();
     const kw = node.keywords.map(t => this.kw(t.value)).join(' ');
     const name = this.formatNode(node.name);
+
+    // Try collapse
+    if (this.config.ddl.collapseShortStatements) {
+      const collapsed = this.collapseCreateTable(node, kw, name);
+      if (collapsed.length <= this.config.ddl.collapseStatementsShorterThan) {
+        return baseIndent + collapsed;
+      }
+    }
+
     const parts: string[] = [`${baseIndent}${kw} ${name}`];
     parts.push(baseIndent + '(');
     const colIndent = this.indentStr(this.indent + 1);
@@ -428,6 +437,18 @@ class Formatter {
       parts.push(baseIndent + node.onFilegroup.map(t => this.kw(t.value)).join(' '));
     }
     return parts.join('\n');
+  }
+
+  private collapseCreateTable(node: CreateTableNode, kw: string, name: string): string {
+    const cols = node.columns.map(c => {
+      if (c.type === 'constraint') return this.formatConstraint(c as ConstraintNode);
+      return this.formatColumnDef(c as ColumnDefNode);
+    });
+    let s = `${kw} ${name} (${cols.join(', ')})`;
+    if (node.onFilegroup && node.onFilegroup.length > 0) {
+      s += ' ' + node.onFilegroup.map(t => this.kw(t.value)).join(' ');
+    }
+    return s;
   }
 
   private formatColumnDef(node: ColumnDefNode, nameWidth: number = 0): string {
@@ -1057,6 +1078,15 @@ class Formatter {
   private formatInsert(node: InsertNode): string {
     const indent = this.indentStr();
     const clauseIndent = this.indentStr(this.indent + 1);
+
+    // Try collapse
+    if (this.config.dml.collapseShortStatements) {
+      const collapsed = this.collapseInsert(node);
+      if (collapsed !== null && collapsed.length <= this.config.dml.collapseStatementsShorterThan) {
+        return indent + collapsed;
+      }
+    }
+
     const lines: string[] = [];
 
     let insertLine = indent + this.kw('INSERT');
@@ -1126,11 +1156,39 @@ class Formatter {
     return lines.join('\n');
   }
 
+  private collapseInsert(node: InsertNode): string | null {
+    let s = this.kw('INSERT');
+    if (node.intoToken) s += ' ' + this.kw('INTO');
+    s += ' ' + this.formatNode(node.target);
+    if (node.columns) {
+      s += ' (' + node.columns.map(c => this.formatNode(c)).join(', ') + ')';
+    }
+    if (node.values) {
+      if (node.values.rows.length !== 1) return null; // multi-row VALUES don't collapse
+      // Skip collapse if any value has trailing comments
+      if (node.values.rows[0].some(v => (v as any)._trailingComment)) return null;
+      s += ' ' + this.kw('VALUES') + ' (' + node.values.rows[0].map(v => this.formatNode(v)).join(', ') + ')';
+    }
+    if (node.select) {
+      s += ' ' + this.collapseSelect(node.select);
+    }
+    return s;
+  }
+
   // --- UPDATE ---
 
   private formatUpdate(node: UpdateNode): string {
     const indent = this.indentStr();
     const clauseIndent = this.indentStr(this.indent + 1);
+
+    // Try collapse
+    if (this.config.dml.collapseShortStatements) {
+      const collapsed = this.collapseUpdate(node);
+      if (collapsed.length <= this.config.dml.collapseStatementsShorterThan) {
+        return indent + collapsed;
+      }
+    }
+
     const lines: string[] = [];
 
     lines.push(indent + this.kw('UPDATE') + ' ' + this.formatNode(node.target));
@@ -1149,6 +1207,20 @@ class Formatter {
     }
 
     return lines.join('\n');
+  }
+
+  private collapseUpdate(node: UpdateNode): string {
+    let s = this.kw('UPDATE') + ' ' + this.formatNode(node.target);
+    s += ' ' + this.kw('SET') + ' ' + node.assignments.map(a =>
+      this.formatNode(a.column) + ' = ' + this.formatNode(a.value)
+    ).join(', ');
+    if (node.from) {
+      s += ' ' + this.kw('FROM') + ' ' + this.formatNode(node.from.source);
+    }
+    if (node.where) {
+      s += ' ' + this.kw('WHERE') + ' ' + this.formatNode(node.where.condition);
+    }
+    return s;
   }
 
   // --- DELETE ---

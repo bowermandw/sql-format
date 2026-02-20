@@ -51,6 +51,66 @@ describe('dml.collapseShortStatements', () => {
   });
 });
 
+// ---- dml.collapseShortStatements for INSERT ----
+
+describe('dml.collapseShortStatements for INSERT', () => {
+  const dmlConfig = {
+    dml: { collapseShortStatements: true, collapseStatementsShorterThan: 1000 },
+  };
+
+  it('collapses short INSERT VALUES to one line', () => {
+    const result = formatSQL('INSERT INTO dbo.t (col1, col2) VALUES (1, 2)', dmlConfig);
+    expect(result.trim()).toBe('INSERT INTO dbo.t (col1, col2) VALUES (1, 2)');
+  });
+
+  it('collapses short INSERT SELECT to one line', () => {
+    const result = formatSQL('INSERT INTO dbo.t (col1) SELECT a FROM t2', dmlConfig);
+    expect(result.trim()).toBe('INSERT INTO dbo.t (col1) SELECT a FROM t2');
+  });
+
+  it('stays expanded when exceeding threshold', () => {
+    const result = formatSQL('INSERT INTO dbo.t (col1, col2) VALUES (1, 2)', {
+      dml: { collapseShortStatements: true, collapseStatementsShorterThan: 20 },
+    });
+    const lines = result.trim().split('\n');
+    expect(lines.length).toBeGreaterThan(1);
+  });
+
+  it('stays expanded when collapse is disabled', () => {
+    const result = formatSQL('INSERT INTO dbo.t (col1, col2) VALUES (1, 2)', {
+      dml: { collapseShortStatements: false, collapseStatementsShorterThan: 1000 },
+    });
+    const lines = result.trim().split('\n');
+    expect(lines.length).toBeGreaterThan(1);
+  });
+});
+
+// ---- dml.collapseShortStatements for UPDATE ----
+
+describe('dml.collapseShortStatements for UPDATE', () => {
+  const dmlConfig = {
+    dml: { collapseShortStatements: true, collapseStatementsShorterThan: 1000 },
+  };
+
+  it('collapses short UPDATE to one line', () => {
+    const result = formatSQL("UPDATE dbo.t SET col1 = 1 WHERE id = 1", dmlConfig);
+    expect(result.trim()).toBe('UPDATE dbo.t SET col1 = 1 WHERE id = 1');
+  });
+
+  it('collapses UPDATE with multiple assignments', () => {
+    const result = formatSQL("UPDATE dbo.t SET a = 1, b = 2", dmlConfig);
+    expect(result.trim()).toBe('UPDATE dbo.t SET a = 1, b = 2');
+  });
+
+  it('stays expanded when exceeding threshold', () => {
+    const result = formatSQL("UPDATE dbo.t SET col1 = 1 WHERE id = 1", {
+      dml: { collapseShortStatements: true, collapseStatementsShorterThan: 20 },
+    });
+    const lines = result.trim().split('\n');
+    expect(lines.length).toBeGreaterThan(1);
+  });
+});
+
 // ---- dml.collapseShortSubqueries + collapseSubqueriesShorterThan ----
 
 describe('dml.collapseShortSubqueries', () => {
