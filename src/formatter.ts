@@ -1714,10 +1714,18 @@ class Formatter {
     // Check if the inline version exceeds the wrap limit or any arg is multi-line
     const indentWidth = this.indent * this.tabStr.length;
     const hasCloseComments = node.closeComments?.length;
+    // Account for suffixes (WITHIN GROUP, OVER, alias) that add to the line length
+    let suffixLength = 0;
+    if (node.withinGroup) {
+      const wg = node.withinGroup;
+      suffixLength += 1 + wg.tokens[0].value.length + 1 + wg.tokens[1].value.length +
+        2 + this.formatOrderBy(wg.orderBy, undefined, true).length + 1;
+    }
+    if (node.overClause) suffixLength += 1 + this.formatOverClause(node.overClause).length;
     const needsExpand = hasCloseComments ||
       formattedArgs.some(a => a.includes('\n')) ||
       (this.config.whitespace.wrapLongLines &&
-       inline.length + indentWidth > this.config.whitespace.wrapLinesLongerThan &&
+       inline.length + indentWidth + suffixLength > this.config.whitespace.wrapLinesLongerThan &&
        node.args.length > 1);
 
     let result: string;
