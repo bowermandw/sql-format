@@ -89,6 +89,11 @@
               "description": "Keep existing blank lines inside statements as-is.",
               "type": "boolean",
               "default": true
+            },
+            "preserveExistingEmptyLinesBetweenComments": {
+              "description": "Keep existing blank lines between consecutive comment lines.",
+              "type": "boolean",
+              "default": true
             }
           }
         }

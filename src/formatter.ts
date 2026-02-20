@@ -219,18 +219,30 @@ class Formatter {
     const token = this.getFirstToken(node);
     if (!token?.leadingComments?.length) return '';
     const indent = this.indentStr();
-    return token.leadingComments
-      .map(c => indent + c.value)
-      .join('\n') + '\n';
+    const preserve = this.config.whitespace.newLines.preserveExistingEmptyLinesBetweenComments;
+    const lines: string[] = [];
+    for (const c of token.leadingComments) {
+      if (preserve && c.precedingBlankLine && lines.length > 0) {
+        lines.push('');
+      }
+      lines.push(indent + c.value);
+    }
+    return lines.join('\n') + '\n';
   }
 
   /** Format leading comments from a token directly, at a given indent level. */
   private formatTokenLeadingComments(token: Token, indentLevel?: number): string {
     if (!token?.leadingComments?.length) return '';
     const indent = this.indentStr(indentLevel);
-    return token.leadingComments
-      .map(c => indent + c.value)
-      .join('\n') + '\n';
+    const preserve = this.config.whitespace.newLines.preserveExistingEmptyLinesBetweenComments;
+    const lines: string[] = [];
+    for (const c of token.leadingComments) {
+      if (preserve && c.precedingBlankLine && lines.length > 0) {
+        lines.push('');
+      }
+      lines.push(indent + c.value);
+    }
+    return lines.join('\n') + '\n';
   }
 
   /** Format comments that appeared before a closing parenthesis. */

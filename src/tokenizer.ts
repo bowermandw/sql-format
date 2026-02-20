@@ -330,6 +330,10 @@ export function attachComments(tokens: Token[]): Token[] {
           continue;
         }
       }
+      if (sawBlankLine) {
+        tok.precedingBlankLine = true;
+        sawBlankLine = false;
+      }
       pendingComments.push(tok);
       continue;
     }

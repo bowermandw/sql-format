@@ -98,9 +98,9 @@ Key settings for line wrapping:
 
 ## Implementation Status
 
-Config options: 44 implemented / 107 total. Legend: [x] = implemented + tested, [~] = implemented but not fully functional, [ ] = not yet implemented.
+Config options: 45 implemented / 108 total. Legend: [x] = implemented + tested, [~] = implemented but not fully functional, [ ] = not yet implemented.
 
-### whitespace (7 implemented / 9 total)
+### whitespace (8 implemented / 10 total)
 - [x] `tabBehavior` — onlySpaces / onlyTabs / tabsWherePossible
 - [x] `numberOfSpacesInTab` — indent width
 - [x] `lineEnding` — lf / crlf
@@ -110,6 +110,7 @@ Config options: 44 implemented / 107 total. Legend: [x] = implemented + tested, 
 - [x] `insertSemicolons` — insert / remove / asis
 - [ ] `newLines.emptyLinesBetweenStatements`
 - [x] `newLines.preserveExistingEmptyLinesBetweenStatements`
+- [x] `newLines.preserveExistingEmptyLinesBetweenComments`
 - [ ] `newLines.emptyLinesAfterBatchSeparator`
 - [ ] `newLines.preserveExistingEmptyLinesAfterBatchSeparator`
 - [ ] `newLines.preserveExistingEmptyLinesWithinStatements`

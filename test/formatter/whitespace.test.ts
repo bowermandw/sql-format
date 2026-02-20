@@ -182,3 +182,37 @@ describe('whitespace.lineEnding', () => {
     expect(lfOnly).not.toContain('\n');
   });
 });
+
+// ---- whitespace.newLines.preserveExistingEmptyLinesBetweenComments ----
+
+describe('whitespace.newLines.preserveExistingEmptyLinesBetweenComments', () => {
+  it('true: preserves blank lines between leading comments', () => {
+    const sql = '-- comment 1\n\n-- comment 2\nSELECT 1';
+    const result = formatSQL(sql);
+    expect(result).toContain('-- comment 1\n\n-- comment 2');
+  });
+
+  it('false: collapses blank lines between leading comments', () => {
+    const sql = '-- comment 1\n\n-- comment 2\nSELECT 1';
+    const result = formatSQL(sql, {
+      whitespace: { newLines: { preserveExistingEmptyLinesBetweenComments: false } },
+    } as any);
+    expect(result).toContain('-- comment 1\n-- comment 2');
+    expect(result).not.toContain('-- comment 1\n\n-- comment 2');
+  });
+
+  it('multiple blank lines collapse to a single blank line', () => {
+    const sql = '-- comment 1\n\n\n\n-- comment 2\nSELECT 1';
+    const result = formatSQL(sql);
+    // Should have exactly one blank line, not multiple
+    expect(result).toContain('-- comment 1\n\n-- comment 2');
+    expect(result).not.toContain('-- comment 1\n\n\n-- comment 2');
+  });
+
+  it('preserves blank lines between comments before statements inside BEGIN/END', () => {
+    const sql = 'BEGIN\n-- first comment\n\n-- second comment\nSELECT 1\nEND';
+    const result = formatSQL(sql);
+    expect(result).toContain('-- first comment\n\n');
+    expect(result).toContain('-- second comment');
+  });
+});

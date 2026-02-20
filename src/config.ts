@@ -21,6 +21,7 @@ export interface FormatConfig {
       emptyLinesAfterBatchSeparator: number;
       preserveExistingEmptyLinesAfterBatchSeparator: boolean;
       preserveExistingEmptyLinesWithinStatements: boolean;
+      preserveExistingEmptyLinesBetweenComments: boolean;
     };
   };
   lists: {
@@ -193,6 +194,7 @@ export const DEFAULT_CONFIG: FormatConfig = {
       emptyLinesAfterBatchSeparator: 1,
       preserveExistingEmptyLinesAfterBatchSeparator: true,
       preserveExistingEmptyLinesWithinStatements: true,
+      preserveExistingEmptyLinesBetweenComments: true,
     },
   },
   lists: {
