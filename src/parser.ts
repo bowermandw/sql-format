@@ -1086,17 +1086,63 @@ class Parser {
     const token = this.advance(); // SET
 
     // Special forms: SET NOCOUNT ON/OFF, SET ANSI_NULLS ON/OFF, etc.
-    if (this.isWord('NOCOUNT') || this.isWord('ANSI_NULLS') || this.isWord('ANSI_PADDING') ||
-        this.isWord('QUOTED_IDENTIFIER') || this.isWord('XACT_ABORT') || this.isWord('ARITHABORT') ||
-        this.isWord('CONCAT_NULL_YIELDS_NULL') || this.isWord('ANSI_WARNINGS') ||
-        this.isWord('NUMERIC_ROUNDABORT') || this.isWord('TRANSACTION') || this.isWord('IDENTITY_INSERT') ||
-        this.isWord('DATEFORMAT') || this.isWord('LANGUAGE') || this.isWord('LOCK_TIMEOUT') ||
-        this.isWord('ROWCOUNT')) {
+    // These SET options take a value directly (no = sign).
+    // Special forms: SET NOCOUNT ON/OFF, SET ANSI_NULLS ON/OFF, etc.
+    // These SET options take a value directly (no = sign).
+    const setOption = this.current().value.toUpperCase();
+    if (['NOCOUNT', 'NOEXEC', 'PARSEONLY', 'FMTONLY',
+         'ANSI_DEFAULTS', 'ANSI_NULLS', 'ANSI_NULL_DFLT_OFF', 'ANSI_NULL_DFLT_ON',
+         'ANSI_PADDING', 'ANSI_WARNINGS', 'ARITHABORT', 'ARITHIGNORE',
+         'CONCAT_NULL_YIELDS_NULL', 'CURSOR_CLOSE_ON_COMMIT', 'NUMERIC_ROUNDABORT',
+         'QUOTED_IDENTIFIER', 'IMPLICIT_TRANSACTIONS', 'REMOTE_PROC_TRANSACTIONS',
+         'XACT_ABORT', 'FORCEPLAN',
+         'SHOWPLAN_ALL', 'SHOWPLAN_TEXT', 'SHOWPLAN_XML',
+         'DATEFIRST', 'DATEFORMAT', 'DEADLOCK_PRIORITY',
+         'LANGUAGE', 'LOCK_TIMEOUT', 'ROWCOUNT', 'TEXTSIZE',
+         'QUERY_GOVERNOR_COST_LIMIT', 'FIPS_FLAGGER',
+        ].includes(setOption)) {
       const target: SqlNode = { type: 'identifier', parts: [this.advance()] } as IdentifierNode;
       const value: SqlNode = this.isWord() ?
         { type: 'identifier', parts: [this.advance()] } as IdentifierNode :
         this.parseExpression();
       return { type: 'set', token, target, value, isSpecial: true };
+    }
+
+    // SET STATISTICS {IO|XML|TIME|PROFILE} ON/OFF
+    if (setOption === 'STATISTICS') {
+      const parts = [this.advance()]; // STATISTICS
+      if (this.isWord()) parts.push(this.advance()); // IO, XML, TIME, PROFILE
+      const target: SqlNode = { type: 'identifier', parts } as IdentifierNode;
+      const value: SqlNode = this.isWord() ?
+        { type: 'identifier', parts: [this.advance()] } as IdentifierNode :
+        this.parseExpression();
+      return { type: 'set', token, target, value, isSpecial: true };
+    }
+
+    // SET TRANSACTION ISOLATION LEVEL {level}
+    if (setOption === 'TRANSACTION') {
+      const parts = [this.advance()]; // TRANSACTION
+      // Consume ISOLATION LEVEL if present
+      if (this.isWord('ISOLATION')) {
+        parts.push(this.advance()); // ISOLATION
+        if (this.isWord('LEVEL')) parts.push(this.advance()); // LEVEL
+      }
+      const target: SqlNode = { type: 'identifier', parts } as IdentifierNode;
+      // Value may be multi-word: READ UNCOMMITTED, READ COMMITTED, REPEATABLE READ
+      const valueParts = [this.advance()];
+      if (this.isWord() && !this.isStatementStart()) valueParts.push(this.advance());
+      const value: SqlNode = { type: 'identifier', parts: valueParts } as IdentifierNode;
+      return { type: 'set', token, target, value, isSpecial: true };
+    }
+
+    // SET IDENTITY_INSERT schema.table ON/OFF — table is a qualified name
+    if (setOption === 'IDENTITY_INSERT') {
+      const target: SqlNode = { type: 'identifier', parts: [this.advance()] } as IdentifierNode;
+      const tableName = this.parseQualifiedName();
+      const onOff: SqlNode = this.isWord() ?
+        { type: 'identifier', parts: [this.advance()] } as IdentifierNode :
+        this.parseExpression();
+      return { type: 'set', token, target, value: onOff, isSpecial: true, tableName } as any;
     }
 
     const target = this.parseQualifiedName();

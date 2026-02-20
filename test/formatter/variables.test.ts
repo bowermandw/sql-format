@@ -95,3 +95,47 @@ describe('DECLARE table variable', () => {
     expect(first).toBe(second);
   });
 });
+
+// ---- SET special forms ----
+
+describe('SET special forms', () => {
+  it('formats SET NOEXEC ON without equals sign', () => {
+    const result = formatSQL('SET NOEXEC ON');
+    expect(result).toBe('SET NOEXEC ON\n');
+  });
+
+  it('formats SET PARSEONLY ON', () => {
+    const result = formatSQL('SET PARSEONLY ON');
+    expect(result).toBe('SET PARSEONLY ON\n');
+  });
+
+  it('formats SET STATISTICS IO ON', () => {
+    const result = formatSQL('SET STATISTICS IO ON');
+    expect(result).toBe('SET STATISTICS IO ON\n');
+  });
+
+  it('formats SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED', () => {
+    const result = formatSQL('SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED');
+    expect(result).toBe('SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED\n');
+  });
+
+  it('formats SET IDENTITY_INSERT with qualified table name', () => {
+    const result = formatSQL('SET IDENTITY_INSERT dbo.my_table ON');
+    expect(result).toBe('SET IDENTITY_INSERT dbo.my_table ON\n');
+  });
+
+  it('formats SET NOCOUNT ON', () => {
+    const result = formatSQL('SET NOCOUNT ON');
+    expect(result).toBe('SET NOCOUNT ON\n');
+  });
+
+  it('does not add equals sign to SET ANSI_NULLS', () => {
+    const result = formatSQL('SET ANSI_NULLS ON');
+    expect(result).not.toContain('=');
+  });
+
+  it('does not add brackets to SET option keywords', () => {
+    const result = formatSQL('SET NOEXEC ON');
+    expect(result).not.toContain('[');
+  });
+});

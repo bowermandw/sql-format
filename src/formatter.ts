@@ -1190,7 +1190,20 @@ class Formatter {
   private formatSet(node: SetNode): string {
     const indent = this.indentStr();
     if (node.isSpecial) {
-      return indent + this.kw('SET') + ' ' + this.formatNode(node.target) + ' ' + this.formatNode(node.value);
+      // Special SET options use space-separated keywords (not dot-joined identifiers)
+      const fmtSpecialIdent = (n: SqlNode): string => {
+        if (n.type === 'identifier') {
+          return (n as IdentifierNode).parts.map(p => this.kw(p.value)).join(' ');
+        }
+        return this.formatNode(n);
+      };
+      let s = indent + this.kw('SET') + ' ' + fmtSpecialIdent(node.target);
+      // SET IDENTITY_INSERT has a table name between target and value
+      if ((node as any).tableName) {
+        s += ' ' + this.formatNode((node as any).tableName);
+      }
+      s += ' ' + fmtSpecialIdent(node.value);
+      return s;
     }
     return indent + this.kw('SET') + ' ' + this.formatNode(node.target) + ' = ' + this.formatNode(node.value);
   }
