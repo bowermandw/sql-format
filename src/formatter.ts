@@ -891,6 +891,10 @@ class Formatter {
       }
       return s;
     }
+    // Bare expression columns (e.g. @var = expr): apply wrapping
+    if (wrap && node.type === 'expression') {
+      return this.wrapExpression(node, this.indent);
+    }
     return this.formatNode(node);
   }
 
@@ -1623,8 +1627,12 @@ class Formatter {
   private wrapExpression(node: SqlNode, indentLevel: number): string {
     const inline = this.formatNode(node);
     const indentWidth = indentLevel * this.tabStr.length;
+    // Use last line length for multi-line results (e.g. expanded function calls)
+    const effectiveLength = inline.includes('\n')
+      ? this.lastLineLength(inline)
+      : inline.length + indentWidth;
     if (!this.config.whitespace.wrapLongLines ||
-        inline.length + indentWidth <= this.config.whitespace.wrapLinesLongerThan) {
+        effectiveLength <= this.config.whitespace.wrapLinesLongerThan) {
       return inline;
     }
     // Try to split at the top-level operator
