@@ -1226,3 +1226,35 @@ describe('CTE with bracket-quoted names', () => {
     expect(result).toContain('[cte2]');
   });
 });
+
+// ---- UNION / UNION ALL / EXCEPT / INTERSECT ----
+
+describe('UNION / EXCEPT / INTERSECT', () => {
+  it('formats UNION between two SELECTs', () => {
+    const result = formatSQL('SELECT col1 FROM t1 UNION SELECT col1 FROM t2');
+    expect(result).toContain('UNION');
+    expect(result).toContain('FROM');
+    expect(result.split('SELECT').length).toBe(3); // 2 SELECTs + 1 empty before first
+  });
+
+  it('formats UNION ALL', () => {
+    const result = formatSQL('SELECT col1 FROM t1 UNION ALL SELECT col1 FROM t2');
+    expect(result).toContain('UNION ALL');
+  });
+
+  it('formats EXCEPT', () => {
+    const result = formatSQL('SELECT col1 FROM t1 EXCEPT SELECT col1 FROM t2');
+    expect(result).toContain('EXCEPT');
+  });
+
+  it('formats INTERSECT', () => {
+    const result = formatSQL('SELECT col1 FROM t1 INTERSECT SELECT col1 FROM t2');
+    expect(result).toContain('INTERSECT');
+  });
+
+  it('formats chained UNIONs', () => {
+    const result = formatSQL('SELECT col1 FROM t1 UNION SELECT col1 FROM t2 UNION SELECT col1 FROM t3');
+    const unions = result.match(/UNION/g);
+    expect(unions).toHaveLength(2);
+  });
+});

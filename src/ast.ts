@@ -72,7 +72,7 @@ export interface SelectNode {
   groupBy?: GroupByNode;
   having?: HavingNode;
   orderBy?: OrderByNode;
-  union?: { token: Token; all?: Token; select: SelectNode };
+  union?: { token: Token; all?: Token; select: SelectNode }; // UNION [ALL] / EXCEPT / INTERSECT
 }
 
 export interface InsertNode {

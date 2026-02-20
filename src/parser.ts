@@ -578,6 +578,18 @@ class Parser {
       orderBy = this.parseOrderBy();
     }
 
+    // UNION [ALL] / EXCEPT / INTERSECT
+    let union: { token: Token; all?: Token; select: SelectNode } | undefined;
+    if (this.isWord('UNION') || this.isWord('EXCEPT') || this.isWord('INTERSECT')) {
+      const token = this.advance();
+      let all: Token | undefined;
+      if (this.isWord('ALL')) {
+        all = this.advance();
+      }
+      const select = this.parseSelect();
+      union = { token, all, select };
+    }
+
     return {
       type: 'select',
       selectToken,
@@ -590,6 +602,7 @@ class Parser {
       groupBy,
       having,
       orderBy,
+      union,
     };
   }
 

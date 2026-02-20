@@ -135,6 +135,7 @@ class Formatter {
   private getLastToken(node: SqlNode): Token | undefined {
     switch (node.type) {
       case 'select': {
+        if (node.union) return this.getLastToken(node.union.select);
         if (node.orderBy) return this.getLastToken(node.orderBy.items[node.orderBy.items.length - 1].direction ? { type: 'rawToken', token: node.orderBy.items[node.orderBy.items.length - 1].direction! } as RawTokenNode : node.orderBy.items[node.orderBy.items.length - 1].expr);
         if (node.having) return this.getLastToken(node.having.condition);
         if (node.groupBy) return this.getLastToken(node.groupBy.items[node.groupBy.items.length - 1]);
@@ -772,6 +773,15 @@ class Formatter {
       lines.push(this.formatOrderBy(node.orderBy, baseIndent));
     }
 
+    // UNION [ALL] / EXCEPT / INTERSECT
+    if (node.union) {
+      const kw = node.union.all
+        ? this.kw(node.union.token.value) + ' ' + this.kw('ALL')
+        : this.kw(node.union.token.value);
+      lines.push(indent + kw);
+      lines.push(this.formatSelect(node.union.select));
+    }
+
     return lines.join('\n');
   }
 
@@ -803,6 +813,12 @@ class Formatter {
     if (node.groupBy) s += ' ' + this.kw('GROUP') + ' ' + this.kw('BY') + ' ' + node.groupBy.items.map(i => this.formatNode(i)).join(', ');
     if (node.having) s += ' ' + this.kw('HAVING') + ' ' + this.formatNode(node.having.condition);
     if (node.orderBy) s += ' ' + this.kw('ORDER') + ' ' + this.kw('BY') + ' ' + node.orderBy.items.map(i => this.formatNode(i.expr) + (i.direction ? ' ' + this.kw(i.direction.value) : '')).join(', ');
+    if (node.union) {
+      const kw = node.union.all
+        ? this.kw(node.union.token.value) + ' ' + this.kw('ALL')
+        : this.kw(node.union.token.value);
+      s += ' ' + kw + ' ' + this.collapseSelect(node.union.select);
+    }
     return s;
   }
 
