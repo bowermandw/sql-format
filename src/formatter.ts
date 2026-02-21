@@ -825,6 +825,13 @@ class Formatter {
     if (node.groupBy?.tokens[0]?.leadingComments?.length) return true;
     if (node.having?.token?.leadingComments?.length) return true;
     if (node.orderBy?.tokens[0]?.leadingComments?.length) return true;
+    // Check for comments on columns (including before parenthesized expressions)
+    for (const col of node.columns) {
+      const firstToken = this.getFirstToken(col);
+      if (firstToken?.leadingComments?.length) return true;
+      const exprNode = (col as any)._expression;
+      if (exprNode?._parenLeadingComments?.length) return true;
+    }
     return false;
   }
 
