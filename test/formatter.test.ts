@@ -1035,6 +1035,14 @@ describe('comments before closing paren', () => {
     expect(result).toContain('-- another comment');
     expect(result).toContain('(col_value1 * col_value2)');
   });
+
+  it('preserves comments before UNION and second SELECT', () => {
+    const sql = `SELECT * FROM dbo.table1\n-- comment before union\n-- another comment\nUNION ALL\n-- comment before select\nSELECT * FROM dbo.table2`;
+    const result = formatSQL(sql);
+    expect(result).toContain('-- comment before union');
+    expect(result).toContain('-- another comment');
+    expect(result).toContain('-- comment before select');
+  });
 });
 
 // ---- CREATE TABLE with CONSTRAINT ----

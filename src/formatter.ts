@@ -808,10 +808,14 @@ class Formatter {
 
     // UNION [ALL] / EXCEPT / INTERSECT
     if (node.union) {
+      const unionComments = this.formatTokenLeadingComments(node.union.token, baseIndent);
+      if (unionComments) lines.push(unionComments.trimEnd());
       const kw = node.union.all
         ? this.kw(node.union.token.value) + ' ' + this.kw('ALL')
         : this.kw(node.union.token.value);
       lines.push(indent + kw);
+      const selectComments = this.formatTokenLeadingComments(node.union.select.selectToken, baseIndent);
+      if (selectComments) lines.push(selectComments.trimEnd());
       lines.push(this.formatSelect(node.union.select));
     }
 
@@ -831,6 +835,13 @@ class Formatter {
       if (firstToken?.leadingComments?.length) return true;
       const exprNode = (col as any)._expression;
       if (exprNode?._parenLeadingComments?.length) return true;
+    }
+    // Check for comments on UNION and the second SELECT
+    if (node.union) {
+      if (node.union.token?.leadingComments?.length) return true;
+      if (node.union.select?.selectToken?.leadingComments?.length) return true;
+      // Recursively check the unioned SELECT
+      if (this.selectHasClauseComments(node.union.select)) return true;
     }
     return false;
   }
