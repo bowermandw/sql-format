@@ -1492,7 +1492,7 @@ class Parser {
 
     // Parenthesized expression or subquery
     if (this.isType(TokenType.LeftParen)) {
-      this.advance(); // (
+      const openParen = this.advance(); // (
       if (this.isWord('SELECT')) {
         const subquery = this.parseSelect();
         let closeComments: Token[] | undefined;
@@ -1501,6 +1501,7 @@ class Parser {
           if (rp.leadingComments?.length) closeComments = rp.leadingComments;
         }
         const pg: ParenGroupNode = { type: 'parenGroup', inner: [subquery] };
+        if (openParen.leadingComments?.length) pg.openParenComments = openParen.leadingComments;
         if (closeComments) pg.closeComments = closeComments;
         return pg;
       }
@@ -1519,9 +1520,13 @@ class Parser {
         // Mark the expression as having been parenthesized so the formatter
         // can re-emit parens when needed to preserve operator precedence
         (inner[0] as any)._parenthesized = true;
+        if (openParen.leadingComments?.length) {
+          (inner[0] as any)._parenLeadingComments = openParen.leadingComments;
+        }
         return inner[0];
       }
       const pg: ParenGroupNode = { type: 'parenGroup', inner };
+      if (openParen.leadingComments?.length) pg.openParenComments = openParen.leadingComments;
       if (closeComments) pg.closeComments = closeComments;
       return pg;
     }

@@ -1027,6 +1027,14 @@ describe('comments before closing paren', () => {
     const result = formatSQL(sql);
     expect(result).toContain('/* inner comment */');
   });
+
+  it('preserves comments before parenthesized expression in select list', () => {
+    const sql = `SELECT col1,\ncol2,\n-- commented column\n-- another comment\n(col_value1 * col_value2) AS value\nFROM dbo.t`;
+    const result = formatSQL(sql, { dml: { collapseShortStatements: false } });
+    expect(result).toContain('-- commented column');
+    expect(result).toContain('-- another comment');
+    expect(result).toContain('(col_value1 * col_value2)');
+  });
 });
 
 // ---- CREATE TABLE with CONSTRAINT ----

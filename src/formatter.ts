@@ -218,18 +218,28 @@ class Formatter {
 
   /** Format leading comments for a node, using the current indentation. */
   private formatLeadingComments(node: SqlNode): string {
+    // Comments from a parenthesized expression's open paren are stored
+    // on the node itself since the paren token is not preserved in the AST.
+    // For IdentifierNodes with _expression, check the expression too.
+    const exprNode = (node as any)._expression || node;
+    const parenComments: Token[] | undefined = (exprNode as any)._parenLeadingComments
+      || (exprNode.type === 'parenGroup' ? (exprNode as ParenGroupNode).openParenComments : undefined);
     const token = this.getFirstToken(node);
-    if (!token?.leadingComments?.length) return '';
+    const allComments = [
+      ...(parenComments || []),
+      ...(token?.leadingComments || []),
+    ];
+    if (!allComments.length) return '';
     const indent = this.indentStr();
     const preserve = this.config.whitespace.newLines.preserveExistingEmptyLinesBetweenComments;
     const lines: string[] = [];
-    for (const c of token.leadingComments) {
+    for (const c of allComments) {
       if (preserve && c.precedingBlankLine && lines.length > 0) {
         lines.push('');
       }
       lines.push(indent + c.value);
     }
-    if (preserve && token.blankLineAfterLeadingComments) {
+    if (preserve && token?.blankLineAfterLeadingComments) {
       lines.push('');
     }
     return lines.join('\n') + '\n';
