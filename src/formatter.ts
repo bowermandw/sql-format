@@ -1026,7 +1026,11 @@ class Formatter {
         return left + '\n' + (opComments ? opComments : '') + indent + this.kw(opUpper) + ' ' + right;
       }
     }
-    return this.formatNode(node);
+    const prevIndent = this.indent;
+    this.indent = indentLevel;
+    const result = this.formatNode(node);
+    this.indent = prevIndent;
+    return result;
   }
 
   /**
@@ -1062,7 +1066,10 @@ class Formatter {
         }
       }
       // Non-comparison leaf — format normally
+      const prevIndent = this.indent;
+      this.indent = indentLevel;
       let formatted = this.formatNode(innerNode);
+      this.indent = prevIndent;
       if (parenthesized) formatted = '(' + formatted + ')';
       formattedItems.push({ left: formatted, op: '', right: '', isComparison: false, logicalOp: item.op, opComments: item.opComments });
     }
@@ -2060,9 +2067,8 @@ class Formatter {
 
     // Expanded format: opening paren and/or values on new lines
     if (parenOnNewLine || firstValueOnNewLine === 'always') {
-      // The IN expression sits inside a clause (e.g. WHERE) at indent+1
-      const outerIndent = this.indentStr(this.indent + 1);
-      const innerIndent = this.indentStr(this.indent + 2);
+      const outerIndent = this.indentStr(this.indent);
+      const innerIndent = this.indentStr(this.indent + 1);
       let result = `${expr} ${notStr}${this.kw('IN')}`;
 
       if (parenOnNewLine) {
