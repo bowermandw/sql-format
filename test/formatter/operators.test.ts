@@ -113,6 +113,61 @@ describe('operators.in.addSpaceAroundInContents', () => {
   });
 });
 
+// ---- operators.in.placeOpeningParenthesisOnNewLine / placeFirstValueOnNewLine ----
+
+describe('operators.in.placeOpeningParenthesisOnNewLine and placeFirstValueOnNewLine', () => {
+  const bothEnabled = {
+    dml: { collapseShortStatements: false, collapseShortSubqueries: false },
+    operators: { in: { placeOpeningParenthesisOnNewLine: true, placeFirstValueOnNewLine: 'always', addSpaceAroundInContents: false } },
+  };
+  const bothDisabled = {
+    dml: { collapseShortStatements: false, collapseShortSubqueries: false },
+    operators: { in: { placeOpeningParenthesisOnNewLine: false, placeFirstValueOnNewLine: 'never', addSpaceAroundInContents: false } },
+  };
+  const parenOnlyEnabled = {
+    dml: { collapseShortStatements: false, collapseShortSubqueries: false },
+    operators: { in: { placeOpeningParenthesisOnNewLine: true, placeFirstValueOnNewLine: 'never', addSpaceAroundInContents: false } },
+  };
+  const firstValueOnlyEnabled = {
+    dml: { collapseShortStatements: false, collapseShortSubqueries: false },
+    operators: { in: { placeOpeningParenthesisOnNewLine: false, placeFirstValueOnNewLine: 'always', addSpaceAroundInContents: false } },
+  };
+
+  it('both enabled: paren and values on new lines', () => {
+    const result = formatSQL("SELECT a FROM t WHERE col IN ('a', 'b', 'c')", bothEnabled);
+    expect(result).toContain("IN\n");
+    expect(result).toContain("(\n");
+    expect(result).toContain("'a', 'b', 'c'");
+    expect(result).toContain("\n    )");
+  });
+
+  it('both disabled: stays inline', () => {
+    const result = formatSQL("SELECT a FROM t WHERE col IN ('a', 'b', 'c')", bothDisabled);
+    expect(result).toContain("IN ('a', 'b', 'c')");
+  });
+
+  it('NOT IN works with both enabled', () => {
+    const result = formatSQL("SELECT a FROM t WHERE col NOT IN ('a', 'b')", bothEnabled);
+    expect(result).toContain("NOT IN\n");
+    expect(result).toContain("(\n");
+    expect(result).toContain("'a', 'b'");
+  });
+
+  it('paren on new line only (values stay inline)', () => {
+    const result = formatSQL("SELECT a FROM t WHERE col IN ('a', 'b')", parenOnlyEnabled);
+    expect(result).toContain("IN\n");
+    expect(result).toContain("('a', 'b')");
+  });
+
+  it('first value on new line only (paren stays inline)', () => {
+    const result = formatSQL("SELECT a FROM t WHERE col IN ('a', 'b')", firstValueOnlyEnabled);
+    expect(result).toContain("IN (");
+    expect(result).toContain("(\n");
+    expect(result).toContain("'a', 'b'");
+    expect(result).toMatch(/\n\s+\)/);
+  });
+});
+
 // ---- operators.comparison.align ----
 
 describe('operators.comparison.align', () => {

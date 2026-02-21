@@ -2054,6 +2054,32 @@ class Formatter {
     const valuesStr = formattedValues.join(', ');
     const singleLine = `${expr} ${notStr}${this.kw('IN')} (${space}${valuesStr}${space})`;
 
+    const inConfig = this.config.operators.in;
+    const parenOnNewLine = inConfig.placeOpeningParenthesisOnNewLine;
+    const firstValueOnNewLine = inConfig.placeFirstValueOnNewLine;
+
+    // Expanded format: opening paren and/or values on new lines
+    if (parenOnNewLine || firstValueOnNewLine === 'always') {
+      // The IN expression sits inside a clause (e.g. WHERE) at indent+1
+      const outerIndent = this.indentStr(this.indent + 1);
+      const innerIndent = this.indentStr(this.indent + 2);
+      let result = `${expr} ${notStr}${this.kw('IN')}`;
+
+      if (parenOnNewLine) {
+        result += '\n' + outerIndent + '(';
+      } else {
+        result += ' (';
+      }
+
+      if (firstValueOnNewLine === 'always') {
+        result += '\n' + innerIndent + valuesStr + '\n' + outerIndent + ')';
+      } else {
+        result += `${space}${valuesStr}${space})`;
+      }
+
+      return result;
+    }
+
     // Check if wrapping is needed
     const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
     // The IN expression is typically placed at indent + 1 (inside a clause)

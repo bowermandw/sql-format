@@ -98,7 +98,7 @@ Key settings for line wrapping:
 
 ## Implementation Status
 
-Config options: 50 implemented / 108 total. Legend: [x] = implemented + tested, [~] = implemented but not fully functional, [ ] = not yet implemented.
+Config options: 52 implemented / 108 total. Legend: [x] = implemented + tested, [~] = implemented but not fully functional, [ ] = not yet implemented.
 
 ### whitespace (8 implemented / 10 total)
 - [x] `tabBehavior` — onlySpaces / onlyTabs / tabsWherePossible
@@ -232,7 +232,7 @@ Config options: 50 implemented / 108 total. Legend: [x] = implemented + tested, 
 - [x] `collapseShortCaseExpressions`
 - [x] `collapseCaseExpressionsShorterThan`
 
-### operators (4 implemented / 12 total)
+### operators (6 implemented / 12 total)
 - [x] `comparison.align`
 - [~] `comparison.addSpacesAroundComparisonOperators` — true works; false falls through to default (still adds spaces)
 - [~] `comparison.addSpacesAroundArithmeticOperators` — true works; false falls through to default (still adds spaces)
@@ -242,6 +242,6 @@ Config options: 50 implemented / 108 total. Legend: [x] = implemented + tested, 
 - [ ] `between.placeOnNewLine`
 - [ ] `between.placeAndKeywordOnNewLine`
 - [ ] `between.andAlignment`
-- [ ] `in.placeOpeningParenthesisOnNewLine`
-- [ ] `in.placeFirstValueOnNewLine`
+- [x] `in.placeOpeningParenthesisOnNewLine`
+- [x] `in.placeFirstValueOnNewLine`
 - [x] `in.addSpaceAroundInContents`
