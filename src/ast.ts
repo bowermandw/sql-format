@@ -84,7 +84,7 @@ export interface InsertNode {
   intoToken?: Token;
   target: SqlNode;
   columns?: SqlNode[];
-  values?: { token: Token; rows: SqlNode[][] };
+  values?: { token: Token; rows: { openParen: Token; values: SqlNode[] }[] };
   select?: SelectNode;
   exec?: SqlNode;
 }

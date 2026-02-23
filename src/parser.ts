@@ -939,15 +939,15 @@ class Parser {
       if (this.isType(TokenType.RightParen)) this.advance();
     }
 
-    let values: { token: Token; rows: SqlNode[][] } | undefined;
+    let values: InsertNode['values'];
     let select: SelectNode | undefined;
 
     if (this.isWord('VALUES')) {
       const valToken = this.advance();
-      const rows: SqlNode[][] = [];
+      const rows: { openParen: Token; values: SqlNode[] }[] = [];
       do {
         if (this.isType(TokenType.LeftParen)) {
-          this.advance();
+          const openParen = this.advance();
           const row: SqlNode[] = [];
           row.push(this.parseExpression());
           while (this.isType(TokenType.Comma)) {
@@ -967,7 +967,7 @@ class Parser {
             row.push(this.parseExpression());
           }
           if (this.isType(TokenType.RightParen)) this.advance();
-          rows.push(row);
+          rows.push({ openParen, values: row });
         }
       } while (this.isType(TokenType.Comma) && this.advance());
       values = { token: valToken, rows };

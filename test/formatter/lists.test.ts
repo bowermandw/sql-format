@@ -131,6 +131,13 @@ describe('lists.alignComments', () => {
     });
     expect(result).toContain('-- short comment');
   });
+
+  it('preserves commented-out row in INSERT VALUES', () => {
+    const sql = "INSERT INTO t (a, b) VALUES\n('a', 'b'),\n('a', 'c'),\n-- ('a', 'd'),\n('a', 'e')";
+    const result = formatSQL(sql);
+    expect(result).toContain("-- ('a', 'd'),");
+    expect(result).toContain("('a', 'e')");
+  });
 });
 
 // ---- lists.alignAliases (table aliases in FROM/JOIN) ----

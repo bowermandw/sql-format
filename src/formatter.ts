@@ -1355,8 +1355,14 @@ class Formatter {
     if (node.values) {
       lines.push(indent + this.kw('VALUES'));
       for (let ri = 0; ri < node.values.rows.length; ri++) {
-        const row = node.values.rows[ri];
+        const rowEntry = node.values.rows[ri];
+        const row = rowEntry.values;
         const rowComma = ri < node.values.rows.length - 1 ? ',' : '';
+
+        // Emit leading comments on the row's opening paren (e.g. a commented-out row)
+        const rowComments = this.formatTokenLeadingComments(rowEntry.openParen, this.indent);
+        if (rowComments) lines.push(rowComments.trimEnd());
+
         const hasComments = row.some(v => (v as any)._trailingComment);
         if (hasComments) {
           // Format each value on its own line with comments
@@ -1416,9 +1422,11 @@ class Formatter {
     }
     if (node.values) {
       if (node.values.rows.length !== 1) return null; // multi-row VALUES don't collapse
-      // Skip collapse if any value has trailing comments
-      if (node.values.rows[0].some(v => (v as any)._trailingComment)) return null;
-      s += ' ' + this.kw('VALUES') + ' (' + node.values.rows[0].map(v => this.formatNode(v)).join(', ') + ')';
+      const rowEntry = node.values.rows[0];
+      // Skip collapse if row has leading comments or any value has trailing comments
+      if (rowEntry.openParen.leadingComments?.length) return null;
+      if (rowEntry.values.some(v => (v as any)._trailingComment)) return null;
+      s += ' ' + this.kw('VALUES') + ' (' + rowEntry.values.map(v => this.formatNode(v)).join(', ') + ')';
     }
     if (node.select) {
       if (this.selectHasClauseComments(node.select)) return null;
