@@ -885,6 +885,14 @@ class Formatter {
         const t = this.getFirstToken(item.expr);
         if (t?.leadingComments?.length) return true;
       }
+      if (node.orderBy.offset) {
+        const t = this.getFirstToken(node.orderBy.offset.value);
+        if (t?.leadingComments?.length) return true;
+      }
+      if (node.orderBy.fetch) {
+        const t = this.getFirstToken(node.orderBy.fetch.value);
+        if (t?.leadingComments?.length) return true;
+      }
     }
     // Check for comments on columns (including before parenthesized expressions)
     for (const col of node.columns) {
@@ -920,7 +928,15 @@ class Formatter {
     if (node.where) s += ' ' + this.kw('WHERE') + ' ' + this.formatNode(node.where.condition);
     if (node.groupBy) s += ' ' + this.kw('GROUP') + ' ' + this.kw('BY') + ' ' + node.groupBy.items.map(i => this.formatNode(i)).join(', ');
     if (node.having) s += ' ' + this.kw('HAVING') + ' ' + this.formatNode(node.having.condition);
-    if (node.orderBy) s += ' ' + this.kw('ORDER') + ' ' + this.kw('BY') + ' ' + node.orderBy.items.map(i => this.formatNode(i.expr) + (i.direction ? ' ' + this.kw(i.direction.value) : '')).join(', ');
+    if (node.orderBy) {
+      s += ' ' + this.kw('ORDER') + ' ' + this.kw('BY') + ' ' + node.orderBy.items.map(i => this.formatNode(i.expr) + (i.direction ? ' ' + this.kw(i.direction.value) : '')).join(', ');
+      if (node.orderBy.offset) {
+        s += ' ' + this.kw('OFFSET') + ' ' + this.formatNode(node.orderBy.offset.value) + ' ' + this.kw(node.orderBy.offset.rowsToken.value);
+      }
+      if (node.orderBy.fetch) {
+        s += ' ' + this.kw('FETCH') + ' ' + this.kw(node.orderBy.fetch.nextToken.value) + ' ' + this.formatNode(node.orderBy.fetch.value) + ' ' + this.kw(node.orderBy.fetch.rowsToken.value) + ' ' + this.kw('ONLY');
+      }
+    }
     if (node.union) {
       const kw = node.union.all
         ? this.kw(node.union.token.value) + ' ' + this.kw('ALL')
@@ -1254,7 +1270,14 @@ class Formatter {
       return s;
     });
     if (inline) {
-      return this.kw('ORDER') + ' ' + this.kw('BY') + ' ' + items.join(', ');
+      let s = this.kw('ORDER') + ' ' + this.kw('BY') + ' ' + items.join(', ');
+      if (node.offset) {
+        s += ' ' + this.kw('OFFSET') + ' ' + this.formatNode(node.offset.value) + ' ' + this.kw(node.offset.rowsToken.value);
+      }
+      if (node.fetch) {
+        s += ' ' + this.kw('FETCH') + ' ' + this.kw(node.fetch.nextToken.value) + ' ' + this.formatNode(node.fetch.value) + ' ' + this.kw(node.fetch.rowsToken.value) + ' ' + this.kw('ONLY');
+      }
+      return s;
     }
     const bi = baseIndent ?? this.indent;
     const indent = this.indentStr(bi);
@@ -1269,6 +1292,16 @@ class Formatter {
       lines.push(clauseIndent + items[i] + comma);
     }
     this.indent = savedIndent;
+    if (node.offset) {
+      const offsetComments = this.formatLeadingComments(node.offset.value);
+      if (offsetComments) lines.push(offsetComments.replace(/\n$/, ''));
+      lines.push(indent + this.kw('OFFSET') + ' ' + this.formatNode(node.offset.value) + ' ' + this.kw(node.offset.rowsToken.value));
+    }
+    if (node.fetch) {
+      const fetchComments = this.formatLeadingComments(node.fetch.value);
+      if (fetchComments) lines.push(fetchComments.replace(/\n$/, ''));
+      lines.push(indent + this.kw('FETCH') + ' ' + this.kw(node.fetch.nextToken.value) + ' ' + this.formatNode(node.fetch.value) + ' ' + this.kw(node.fetch.rowsToken.value) + ' ' + this.kw('ONLY'));
+    }
     return lines.join('\n');
   }
 

@@ -733,6 +733,64 @@ ORDER BY column1`;
     expect(result).toContain('-- comment before ORDER BY');
   });
 
+  // --- OFFSET / FETCH NEXT ---
+
+  it('formats OFFSET without FETCH in collapsed mode', () => {
+    const result = formatSQL('SELECT col1 FROM t1 ORDER BY col1 OFFSET 5 ROWS');
+    expect(result.trim()).toBe('SELECT col1 FROM t1 ORDER BY col1 OFFSET 5 ROWS');
+  });
+
+  it('formats OFFSET...FETCH NEXT in collapsed mode', () => {
+    const result = formatSQL('SELECT col1 FROM t1 ORDER BY col1 OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY');
+    expect(result.trim()).toBe('SELECT col1 FROM t1 ORDER BY col1 OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY');
+  });
+
+  it('formats OFFSET...FETCH NEXT in expanded mode', () => {
+    const result = formatSQL(
+      'SELECT col1, col2, col3, col4 FROM my_table WHERE col1 > 10 ORDER BY col1 OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY'
+    );
+    expect(result).toContain('ORDER BY\n');
+    expect(result).toContain('OFFSET 5 ROWS\n');
+    expect(result).toContain('FETCH NEXT 10 ROWS ONLY');
+  });
+
+  it('formats OFFSET...FETCH NEXT with variables', () => {
+    const result = formatSQL(
+      'SELECT col1 FROM t1 ORDER BY col1 OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY'
+    );
+    expect(result).toContain('OFFSET @skip ROWS');
+    expect(result).toContain('FETCH NEXT @take ROWS ONLY');
+  });
+
+  it('applies keyword casing to OFFSET/FETCH keywords', () => {
+    const result = formatSQL('select col1 from t1 order by col1 offset 5 rows fetch next 10 rows only', {
+      casing: { reservedKeywords: 'uppercase' },
+    });
+    expect(result).toContain('OFFSET');
+    expect(result).toContain('ROWS');
+    expect(result).toContain('FETCH');
+    expect(result).toContain('NEXT');
+    expect(result).toContain('ONLY');
+  });
+
+  it('formats OFFSET...FETCH NEXT with FIRST keyword', () => {
+    const result = formatSQL('SELECT col1 FROM t1 ORDER BY col1 OFFSET 0 ROWS FETCH FIRST 5 ROWS ONLY');
+    expect(result).toContain('FETCH FIRST 5 ROWS ONLY');
+  });
+
+  it('formats OFFSET with ROW (singular)', () => {
+    const result = formatSQL('SELECT col1 FROM t1 ORDER BY col1 OFFSET 1 ROW FETCH NEXT 1 ROW ONLY');
+    expect(result).toContain('OFFSET 1 ROW');
+    expect(result).toContain('FETCH NEXT 1 ROW ONLY');
+  });
+
+  it('formats OFFSET...FETCH idempotently', () => {
+    const sql = 'SELECT col1, col2, col3 FROM my_table ORDER BY col1 OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY';
+    const first = formatSQL(sql);
+    const second = formatSQL(first);
+    expect(second).toBe(first);
+  });
+
   it('preserves comments before HAVING in SELECT', () => {
     const sql = `SELECT column1, COUNT(*)
 FROM table_name_1

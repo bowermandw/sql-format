@@ -889,7 +889,26 @@ class Parser {
       parseItem();
     }
 
-    return { type: 'orderBy', tokens, items };
+    let offset: OrderByNode['offset'];
+    let fetch: OrderByNode['fetch'];
+
+    if (this.isWord('OFFSET')) {
+      const keyword = this.advance();
+      const value = this.parseExpression();
+      const rowsToken = (this.isWord('ROW') || this.isWord('ROWS')) ? this.advance() : keyword;
+      offset = { keyword, value, rowsToken };
+
+      if (this.isWord('FETCH')) {
+        const fetchToken = this.advance();
+        const nextToken = (this.isWord('NEXT') || this.isWord('FIRST')) ? this.advance() : fetchToken;
+        const fetchValue = this.parseExpression();
+        const fetchRowsToken = (this.isWord('ROW') || this.isWord('ROWS')) ? this.advance() : fetchToken;
+        const onlyToken = this.isWord('ONLY') ? this.advance() : fetchToken;
+        fetch = { fetchToken, nextToken, value: fetchValue, rowsToken: fetchRowsToken, onlyToken };
+      }
+    }
+
+    return { type: 'orderBy', tokens, items, offset, fetch };
   }
 
   private parseHaving(): HavingNode {

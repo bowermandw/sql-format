@@ -137,6 +137,8 @@ export interface OrderByNode {
   type: 'orderBy';
   tokens: Token[];           // ORDER, BY
   items: { expr: SqlNode; direction?: Token }[];
+  offset?: { keyword: Token; value: SqlNode; rowsToken: Token };
+  fetch?: { fetchToken: Token; nextToken: Token; value: SqlNode; rowsToken: Token; onlyToken: Token };
 }
 
 export interface HavingNode {
