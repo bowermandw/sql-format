@@ -56,6 +56,29 @@ describe('ddl.alignDataTypesAndConstraints', () => {
   });
 });
 
+// ---- CREATE TABLE with bracketed data types ----
+
+describe('CREATE TABLE with bracketed data types', () => {
+  it('handles bracketed data types with precision', () => {
+    const sql = 'CREATE TABLE #t ([column1] [varchar](50) NOT NULL, [column2] [varchar](50) NULL)';
+    const result = formatSQL(sql);
+    expect(result).toContain('[column1] [varchar](50) NOT NULL');
+    expect(result).toContain('[column2] [varchar](50) NULL');
+  });
+
+  it('handles bracketed data types with scale', () => {
+    const sql = 'CREATE TABLE #t ([col1] [decimal](10, 2) NOT NULL)';
+    const result = formatSQL(sql);
+    expect(result).toContain('[col1] [decimal](10, 2) NOT NULL');
+  });
+
+  it('handles bracketed data types with MAX', () => {
+    const sql = 'CREATE TABLE #t ([col1] [nvarchar](MAX) NULL)';
+    const result = formatSQL(sql);
+    expect(result).toContain('[col1] [nvarchar](MAX) NULL');
+  });
+});
+
 // ---- ddl.collapseShortStatements for CREATE TABLE ----
 
 describe('ddl.collapseShortStatements for CREATE TABLE', () => {

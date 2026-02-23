@@ -330,9 +330,9 @@ class Parser {
   }
 
   private parseDataType(): SqlNode {
-    // e.g., VARCHAR(20), INT, DECIMAL(10,2)
+    // e.g., VARCHAR(20), INT, DECIMAL(10,2), [varchar](50)
     const parts: Token[] = [];
-    if (this.isWord()) {
+    if (this.isWord() || this.isType(TokenType.QuotedIdentifier)) {
       parts.push(this.advance());
     }
 
