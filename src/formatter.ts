@@ -2309,8 +2309,9 @@ class Formatter {
         } else {
           const valueLine = valueIndent + valuesStr;
           const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
+          const subsequentOnNewLines = inConfig.placeSubsequentValuesOnNewLines;
 
-          if (!this.config.whitespace.wrapLongLines || valueLine.length <= maxLineLength) {
+          if (!this.config.whitespace.wrapLongLines || valueLine.length <= maxLineLength || subsequentOnNewLines === 'never') {
             result += '\n' + valueLine + '\n' + innerIndent + ')';
           } else {
             // Wrap values: pack as many as fit per line
@@ -2376,7 +2377,8 @@ class Formatter {
       const forLine = innerIndent + forPrefix + space + valuesStr + space + ')';
       const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
 
-      if (!this.config.whitespace.wrapLongLines || forLine.length <= maxLineLength) {
+      const subsequentOnNewLines = inConfig.placeSubsequentValuesOnNewLines;
+      if (!this.config.whitespace.wrapLongLines || forLine.length <= maxLineLength || subsequentOnNewLines === 'never') {
         lines.push(forLine);
       } else {
         // Wrap values: pack as many as fit per line, aligning after the opening paren
