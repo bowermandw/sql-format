@@ -649,6 +649,47 @@ UNPIVOT (Orders FOR Employee IN ([Emp1], [Emp2], [Emp3])) AS unpvt`;
     expect(result).toContain('SUM(x)');
     expect(result).toContain('AS p');
   });
+
+  it('PIVOT IN list respects addSpaceAroundInContents', () => {
+    const sql = `SELECT * FROM t PIVOT (SUM(x) FOR y IN ([a], [b])) AS p`;
+    const result = formatSQL(sql, { operators: { in: { addSpaceAroundInContents: true } } });
+    expect(result).toContain('IN ( [a], [b] )');
+  });
+
+  it('PIVOT IN list respects placeOpeningParenthesisOnNewLine', () => {
+    const sql = `SELECT * FROM t PIVOT (SUM(x) FOR y IN ([a], [b])) AS p`;
+    const result = formatSQL(sql, { operators: { in: { placeOpeningParenthesisOnNewLine: true } } });
+    const lines = result.split('\n');
+    const inLine = lines.find(l => l.trim().endsWith('IN'));
+    expect(inLine).toBeDefined();
+    const nextLine = lines[lines.indexOf(inLine!) + 1];
+    expect(nextLine!.trim()).toMatch(/^\(/);
+  });
+
+  it('PIVOT IN list respects placeFirstValueOnNewLine', () => {
+    const sql = `SELECT * FROM t PIVOT (SUM(x) FOR y IN ([a], [b])) AS p`;
+    const result = formatSQL(sql, { operators: { in: { placeFirstValueOnNewLine: 'always' } } });
+    const lines = result.split('\n');
+    const openParenLine = lines.find(l => l.includes('IN ('));
+    expect(openParenLine).toBeDefined();
+    const nextLine = lines[lines.indexOf(openParenLine!) + 1];
+    expect(nextLine!.trim()).toContain('[a], [b]');
+  });
+
+  it('PIVOT IN list respects all operators.in options together', () => {
+    const sql = `SELECT * FROM t PIVOT (SUM(x) FOR y IN ([a], [b])) AS p`;
+    const result = formatSQL(sql, {
+      operators: {
+        in: {
+          placeOpeningParenthesisOnNewLine: true,
+          placeFirstValueOnNewLine: 'always',
+          addSpaceAroundInContents: true,
+        },
+      },
+    });
+    expect(result).toContain('IN\n');
+    expect(result).toContain('[a], [b]');
+  });
 });
 
 // ---- Comments ----

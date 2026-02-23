@@ -2256,54 +2256,81 @@ class Formatter {
     // Aggregation expression
     lines.push(innerIndent + this.formatNode(node.aggregation));
 
-    // FOR column IN (values)
+    // FOR column IN (values) — respects operators.in config
+    const inConfig = this.config.operators.in;
     const formattedValues = node.values.map(v => this.formatNode(v));
-    const forPrefix = this.kw('FOR') + ' ' + this.formatNode(node.pivotColumn) + ' ' + this.kw('IN') + ' (';
-    const forLine = innerIndent + forPrefix + formattedValues.join(', ') + ')';
-    const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
+    const space = inConfig.addSpaceAroundInContents ? ' ' : '';
+    const valuesStr = formattedValues.join(', ');
+    const forColumnStr = this.kw('FOR') + ' ' + this.formatNode(node.pivotColumn) + ' ' + this.kw('IN');
 
-    if (!this.config.whitespace.wrapLongLines || forLine.length <= maxLineLength) {
-      lines.push(forLine);
-    } else {
-      // Wrap values: pack as many as fit per line, aligning after the opening paren
-      const continuationPad = innerIndent + ' '.repeat(forPrefix.length);
-      const availableFirstLine = maxLineLength - innerIndent.length - forPrefix.length;
-      const availableContinuation = maxLineLength - continuationPad.length;
+    const parenOnNewLine = inConfig.placeOpeningParenthesisOnNewLine;
+    const firstValueOnNewLine = inConfig.placeFirstValueOnNewLine;
 
-      const lineGroups: string[][] = [];
-      let currentGroup: string[] = [];
-      let currentLen = 0;
-      let isFirstLine = true;
-
-      for (const val of formattedValues) {
-        const addLen = currentGroup.length === 0 ? val.length : val.length + 2;
-        const available = isFirstLine ? availableFirstLine : availableContinuation;
-
-        if (currentGroup.length > 0 && currentLen + addLen > available) {
-          lineGroups.push(currentGroup);
-          currentGroup = [val];
-          currentLen = val.length;
-          isFirstLine = false;
-        } else {
-          currentGroup.push(val);
-          currentLen += addLen;
-        }
+    if (parenOnNewLine || firstValueOnNewLine === 'always') {
+      // Expanded format using operators.in placement settings
+      let result = innerIndent + forColumnStr;
+      if (parenOnNewLine) {
+        result += '\n' + innerIndent + '(';
+      } else {
+        result += ' (';
       }
-      if (currentGroup.length > 0) {
-        lineGroups.push(currentGroup);
-      }
-
-      let result = innerIndent + forPrefix;
-      for (let i = 0; i < lineGroups.length; i++) {
-        if (i > 0) result += continuationPad;
-        result += lineGroups[i].join(', ');
-        if (i < lineGroups.length - 1) {
-          result += ',\n';
-        } else {
-          result += ')';
-        }
+      if (firstValueOnNewLine === 'always') {
+        const valueIndent = this.indentStr(bi + 2);
+        result += '\n' + valueIndent + valuesStr + '\n' + innerIndent + ')';
+      } else {
+        result += space + valuesStr + space + ')';
       }
       lines.push(result);
+    } else {
+      // Default: single-line or wrap-on-overflow
+      const forPrefix = forColumnStr + ' (';
+      const forLine = innerIndent + forPrefix + space + valuesStr + space + ')';
+      const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
+
+      if (!this.config.whitespace.wrapLongLines || forLine.length <= maxLineLength) {
+        lines.push(forLine);
+      } else {
+        // Wrap values: pack as many as fit per line, aligning after the opening paren
+        const fullPrefix = forPrefix + space;
+        const continuationPad = innerIndent + ' '.repeat(fullPrefix.length);
+        const availableFirstLine = maxLineLength - innerIndent.length - fullPrefix.length;
+        const availableContinuation = maxLineLength - continuationPad.length;
+
+        const lineGroups: string[][] = [];
+        let currentGroup: string[] = [];
+        let currentLen = 0;
+        let isFirstLine = true;
+
+        for (const val of formattedValues) {
+          const addLen = currentGroup.length === 0 ? val.length : val.length + 2;
+          const available = isFirstLine ? availableFirstLine : availableContinuation;
+
+          if (currentGroup.length > 0 && currentLen + addLen > available) {
+            lineGroups.push(currentGroup);
+            currentGroup = [val];
+            currentLen = val.length;
+            isFirstLine = false;
+          } else {
+            currentGroup.push(val);
+            currentLen += addLen;
+          }
+        }
+        if (currentGroup.length > 0) {
+          lineGroups.push(currentGroup);
+        }
+
+        let result = innerIndent + fullPrefix;
+        for (let i = 0; i < lineGroups.length; i++) {
+          if (i > 0) result += continuationPad;
+          result += lineGroups[i].join(', ');
+          if (i < lineGroups.length - 1) {
+            result += ',\n';
+          } else {
+            result += space + ')';
+          }
+        }
+        lines.push(result);
+      }
     }
 
     // Closing paren + alias
