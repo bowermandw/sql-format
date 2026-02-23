@@ -721,19 +721,35 @@ class Formatter {
     } else {
       // First item on same line as SELECT
       if (cols.length === 1) {
-        if (colComments[0]) lines.push(colComments[0].replace(/\n$/, ''));
-        lines.push(selectLine + ' ' + cols[0]);
+        if (colComments[0]) {
+          // Comment between SELECT and single column — expand to separate lines
+          lines.push(selectLine);
+          lines.push(colComments[0].replace(/\n$/, ''));
+          lines.push(clauseIndent + cols[0]);
+        } else {
+          lines.push(selectLine + ' ' + cols[0]);
+        }
       } else {
         if (leadingCommas) {
-          if (colComments[0]) lines.push(colComments[0].replace(/\n$/, ''));
-          lines.push(selectLine + ' ' + cols[0]);
+          if (colComments[0]) {
+            lines.push(selectLine);
+            lines.push(colComments[0].replace(/\n$/, ''));
+            lines.push(clauseIndent + ' ' + cols[0]);
+          } else {
+            lines.push(selectLine + ' ' + cols[0]);
+          }
           for (let i = 1; i < cols.length; i++) {
             if (colComments[i]) lines.push(colComments[i].replace(/\n$/, ''));
             lines.push(clauseIndent.slice(0, -1) + ',' + cols[i]);
           }
         } else {
-          if (colComments[0]) lines.push(colComments[0].replace(/\n$/, ''));
-          lines.push(selectLine + ' ' + cols[0] + ',');
+          if (colComments[0]) {
+            lines.push(selectLine);
+            lines.push(colComments[0].replace(/\n$/, ''));
+            lines.push(clauseIndent + cols[0] + ',');
+          } else {
+            lines.push(selectLine + ' ' + cols[0] + ',');
+          }
           for (let i = 1; i < cols.length; i++) {
             if (colComments[i]) lines.push(colComments[i].replace(/\n$/, ''));
             lines.push(clauseIndent + cols[i] + (i < cols.length - 1 ? ',' : ''));
