@@ -2276,7 +2276,42 @@ class Formatter {
       }
       if (firstValueOnNewLine === 'always') {
         const valueIndent = this.indentStr(bi + 2);
-        result += '\n' + valueIndent + valuesStr + '\n' + innerIndent + ')';
+        const valueLine = valueIndent + valuesStr;
+        const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
+
+        if (!this.config.whitespace.wrapLongLines || valueLine.length <= maxLineLength) {
+          result += '\n' + valueLine + '\n' + innerIndent + ')';
+        } else {
+          // Wrap values: pack as many as fit per line
+          const available = maxLineLength - valueIndent.length;
+          const wrappedLines: string[][] = [];
+          let currentGroup: string[] = [];
+          let currentLen = 0;
+
+          for (const val of formattedValues) {
+            const addLen = currentGroup.length === 0 ? val.length : val.length + 2;
+            if (currentGroup.length > 0 && currentLen + addLen > available) {
+              wrappedLines.push(currentGroup);
+              currentGroup = [val];
+              currentLen = val.length;
+            } else {
+              currentGroup.push(val);
+              currentLen += addLen;
+            }
+          }
+          if (currentGroup.length > 0) {
+            wrappedLines.push(currentGroup);
+          }
+
+          result += '\n';
+          for (let i = 0; i < wrappedLines.length; i++) {
+            result += valueIndent + wrappedLines[i].join(', ');
+            if (i < wrappedLines.length - 1) {
+              result += ',\n';
+            }
+          }
+          result += '\n' + innerIndent + ')';
+        }
       } else {
         result += space + valuesStr + space + ')';
       }
