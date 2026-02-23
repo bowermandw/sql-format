@@ -2163,7 +2163,52 @@ class Formatter {
       }
 
       if (firstValueOnNewLine === 'always') {
-        result += '\n' + innerIndent + valuesStr + '\n' + outerIndent + ')';
+        const subsequentOnNewLines = inConfig.placeSubsequentValuesOnNewLines;
+        const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
+        const valueLine = innerIndent + valuesStr;
+
+        if (subsequentOnNewLines === 'always') {
+          // One value per line
+          result += '\n';
+          for (let i = 0; i < formattedValues.length; i++) {
+            const comma = i < formattedValues.length - 1 ? ',' : '';
+            result += innerIndent + formattedValues[i] + comma + '\n';
+          }
+          result += outerIndent + ')';
+        } else if (subsequentOnNewLines === 'never' || !this.config.whitespace.wrapLongLines || valueLine.length <= maxLineLength) {
+          // All values on one line
+          result += '\n' + innerIndent + valuesStr + '\n' + outerIndent + ')';
+        } else {
+          // Wrap values: pack as many as fit per line
+          const available = maxLineLength - innerIndent.length;
+          const wrappedLines: string[][] = [];
+          let currentGroup: string[] = [];
+          let currentLen = 0;
+
+          for (const val of formattedValues) {
+            const addLen = currentGroup.length === 0 ? val.length : val.length + 2;
+            if (currentGroup.length > 0 && currentLen + addLen > available) {
+              wrappedLines.push(currentGroup);
+              currentGroup = [val];
+              currentLen = val.length;
+            } else {
+              currentGroup.push(val);
+              currentLen += addLen;
+            }
+          }
+          if (currentGroup.length > 0) {
+            wrappedLines.push(currentGroup);
+          }
+
+          result += '\n';
+          for (let i = 0; i < wrappedLines.length; i++) {
+            result += innerIndent + wrappedLines[i].join(', ');
+            if (i < wrappedLines.length - 1) {
+              result += ',\n';
+            }
+          }
+          result += '\n' + outerIndent + ')';
+        }
       } else {
         result += `${space}${valuesStr}${space})`;
       }
@@ -2171,12 +2216,27 @@ class Formatter {
       return result;
     }
 
+    const subsequentOnNewLines = inConfig.placeSubsequentValuesOnNewLines;
+
     // Check if wrapping is needed
     const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
     // The IN expression is typically placed at indent + 1 (inside a clause)
     const lineIndentWidth = (this.indent + 1) * this.tabStr.length;
 
-    if (!this.config.whitespace.wrapLongLines || singleLine.length + lineIndentWidth <= maxLineLength) {
+    if (subsequentOnNewLines === 'always') {
+      // One value per line
+      const outerIndent = this.indentStr(this.indent);
+      const innerIndent = this.indentStr(this.indent + 1);
+      let result = `${expr} ${notStr}${this.kw('IN')} (\n`;
+      for (let i = 0; i < formattedValues.length; i++) {
+        const comma = i < formattedValues.length - 1 ? ',' : '';
+        result += innerIndent + formattedValues[i] + comma + '\n';
+      }
+      result += outerIndent + ')';
+      return result;
+    }
+
+    if (subsequentOnNewLines === 'never' || !this.config.whitespace.wrapLongLines || singleLine.length + lineIndentWidth <= maxLineLength) {
       return singleLine;
     }
 
@@ -2319,7 +2379,8 @@ class Formatter {
               result += valueIndent + formattedValues[i] + comma + '\n';
             }
             result += innerIndent + ')';
-          } else if (!this.config.whitespace.wrapLongLines || valueLine.length <= maxLineLength) {
+          } else if (subsequentOnNewLines === 'never' || !this.config.whitespace.wrapLongLines || valueLine.length <= maxLineLength) {
+            // All values on one line
             result += '\n' + valueLine + '\n' + innerIndent + ')';
           } else {
             // Wrap values: pack as many as fit per line
@@ -2396,7 +2457,8 @@ class Formatter {
         }
         result += innerIndent + ')';
         lines.push(result);
-      } else if (!this.config.whitespace.wrapLongLines || forLine.length <= maxLineLength) {
+      } else if (subsequentOnNewLines === 'never' || !this.config.whitespace.wrapLongLines || forLine.length <= maxLineLength) {
+        // All values on one line
         lines.push(forLine);
       } else {
         // Wrap values: pack as many as fit per line, aligning after the opening paren
