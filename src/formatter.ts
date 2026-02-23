@@ -2345,25 +2345,62 @@ class Formatter {
         const valueIndent = this.indentStr(bi + 2);
 
         if (hasComments) {
-          // When comments exist, place each value on its own line to preserve comments
+          // Wrap values to max line length, preserving comments
+          const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
+          const available = maxLineLength - valueIndent.length;
+          const subsequentOnNewLines = inConfig.placeSubsequentValuesOnNewLines;
           result += '\n';
+          let currentLine = '';
+
           for (let i = 0; i < node.values.length; i++) {
             const v = node.values[i];
             const firstToken = this.getFirstToken(v);
-            // Emit leading comments
-            if (firstToken?.leadingComments?.length) {
-              for (const c of firstToken.leadingComments) {
+            const hasLeading = firstToken?.leadingComments?.length;
+            const tc = (v as any)._trailingComment as Token | undefined;
+            const comma = i < node.values.length - 1 ? ',' : '';
+            const valWithComma = formattedValues[i] + comma;
+
+            // Leading comments force a new line
+            if (hasLeading) {
+              if (currentLine) {
+                result += valueIndent + currentLine + '\n';
+                currentLine = '';
+              }
+              for (const c of firstToken!.leadingComments!) {
                 result += valueIndent + c.value + '\n';
               }
             }
-            const comma = i < node.values.length - 1 ? ',' : '';
-            result += valueIndent + formattedValues[i] + comma;
-            // Emit trailing comment
-            const tc = (v as any)._trailingComment as Token | undefined;
+
+            // Trailing comments force this value onto its own line
             if (tc) {
-              result += ' ' + tc.value;
+              if (currentLine) {
+                result += valueIndent + currentLine + '\n';
+                currentLine = '';
+              }
+              result += valueIndent + valWithComma + ' ' + tc.value + '\n';
+              continue;
             }
-            result += '\n';
+
+            if (subsequentOnNewLines === 'always') {
+              if (currentLine) {
+                result += valueIndent + currentLine + '\n';
+                currentLine = '';
+              }
+              result += valueIndent + valWithComma + '\n';
+            } else if (subsequentOnNewLines === 'never' || !this.config.whitespace.wrapLongLines) {
+              currentLine += (currentLine ? ' ' : '') + valWithComma;
+            } else {
+              const addLen = currentLine ? valWithComma.length + 1 : valWithComma.length;
+              if (currentLine && currentLine.length + addLen > available) {
+                result += valueIndent + currentLine + '\n';
+                currentLine = valWithComma;
+              } else {
+                currentLine += (currentLine ? ' ' : '') + valWithComma;
+              }
+            }
+          }
+          if (currentLine) {
+            result += valueIndent + currentLine + '\n';
           }
           result += innerIndent + ')';
         } else {
@@ -2419,24 +2456,61 @@ class Formatter {
       }
       lines.push(result);
     } else if (hasComments) {
-      // Comments present in default mode — expand to one-value-per-line
+      // Comments present in default mode — wrap values, preserving comments
       const valueIndent = this.indentStr(bi + 2);
+      const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
+      const available = maxLineLength - valueIndent.length;
+      const subsequentOnNewLines = inConfig.placeSubsequentValuesOnNewLines;
       let result = innerIndent + forColumnStr + '\n' + innerIndent + '(\n';
+      let currentLine = '';
+
       for (let i = 0; i < node.values.length; i++) {
         const v = node.values[i];
         const firstToken = this.getFirstToken(v);
-        if (firstToken?.leadingComments?.length) {
-          for (const c of firstToken.leadingComments) {
+        const hasLeading = firstToken?.leadingComments?.length;
+        const tc = (v as any)._trailingComment as Token | undefined;
+        const comma = i < node.values.length - 1 ? ',' : '';
+        const valWithComma = formattedValues[i] + comma;
+
+        if (hasLeading) {
+          if (currentLine) {
+            result += valueIndent + currentLine + '\n';
+            currentLine = '';
+          }
+          for (const c of firstToken!.leadingComments!) {
             result += valueIndent + c.value + '\n';
           }
         }
-        const comma = i < node.values.length - 1 ? ',' : '';
-        result += valueIndent + formattedValues[i] + comma;
-        const tc = (v as any)._trailingComment as Token | undefined;
+
         if (tc) {
-          result += ' ' + tc.value;
+          if (currentLine) {
+            result += valueIndent + currentLine + '\n';
+            currentLine = '';
+          }
+          result += valueIndent + valWithComma + ' ' + tc.value + '\n';
+          continue;
         }
-        result += '\n';
+
+        if (subsequentOnNewLines === 'always') {
+          if (currentLine) {
+            result += valueIndent + currentLine + '\n';
+            currentLine = '';
+          }
+          result += valueIndent + valWithComma + '\n';
+        } else if (subsequentOnNewLines === 'never' || !this.config.whitespace.wrapLongLines) {
+          currentLine += (currentLine ? ' ' : '') + valWithComma;
+        } else {
+          const addLen = currentLine ? valWithComma.length + 1 : valWithComma.length;
+          if (currentLine && currentLine.length + addLen > available) {
+            result += valueIndent + currentLine + '\n';
+            currentLine = valWithComma;
+          } else {
+            currentLine += (currentLine ? ' ' : '') + valWithComma;
+          }
+        }
+      }
+      if (currentLine) {
+        result += valueIndent + currentLine + '\n';
       }
       result += innerIndent + ')';
       lines.push(result);
