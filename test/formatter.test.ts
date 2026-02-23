@@ -1433,3 +1433,46 @@ describe('UNION / EXCEPT / INTERSECT', () => {
     }
   });
 });
+
+// ---- USE statement ----
+
+describe('USE statement', () => {
+  it('formats USE with simple database name', () => {
+    const result = formatSQL('USE AdventureWorks2022');
+    expect(result.trim()).toBe('USE AdventureWorks2022');
+  });
+
+  it('formats USE with bracketed database name', () => {
+    const result = formatSQL('USE [My Database]');
+    expect(result.trim()).toBe('USE [My Database]');
+  });
+
+  it('applies keyword casing to USE', () => {
+    const result = formatSQL('use mydb', { casing: { reservedKeywords: 'uppercase' } });
+    expect(result.trim()).toBe('USE mydb');
+  });
+
+  it('applies lowercase casing to USE', () => {
+    const result = formatSQL('USE MyDb', { casing: { reservedKeywords: 'lowercase' } });
+    expect(result.trim()).toBe('use MyDb');
+  });
+
+  it('formats USE before GO', () => {
+    const result = formatSQL('USE MyDb\nGO\nSELECT 1');
+    expect(result).toContain('USE MyDb');
+    expect(result).toContain('GO');
+    expect(result).toContain('SELECT 1');
+  });
+
+  it('inserts semicolon after USE when configured', () => {
+    const result = formatSQL('USE MyDb', { whitespace: { insertSemicolons: 'insert' } });
+    expect(result.trim()).toBe('USE MyDb;');
+  });
+
+  it('USE is idempotent', () => {
+    const sql = 'USE AdventureWorks2022\nGO\nSELECT 1';
+    const first = formatSQL(sql);
+    const second = formatSQL(first);
+    expect(first).toBe(second);
+  });
+});

@@ -172,6 +172,21 @@ describe('parser', () => {
     }
   });
 
+  it('parses USE statement', () => {
+    const ast = parseSQL('USE AdventureWorks2022');
+    const stmt = ast.batches[0].statements[0];
+    expect(stmt.type).toBe('use');
+    if (stmt.type === 'use') {
+      expect(stmt.database.type).toBe('identifier');
+    }
+  });
+
+  it('parses USE with bracketed database name', () => {
+    const ast = parseSQL('USE [My Database]');
+    const stmt = ast.batches[0].statements[0];
+    expect(stmt.type).toBe('use');
+  });
+
   it('parses storedproctest.sql without errors', () => {
     const sql = `create or alter procedure dbo.rpt_stuff (@user_id VARCHAR(20), @fiscal_year INT = 2025,
 @some_param VARCHAR(50) = NULL,

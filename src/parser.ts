@@ -1,7 +1,7 @@
 import { Token, TokenType } from './tokens';
 import {
   SqlNode, BatchNode, SelectNode, CreateProcedureNode, ProcParameter,
-  BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, ThrowNode, RaiserrorNode,
+  BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, UseNode, ThrowNode, RaiserrorNode,
   CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode,
   RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode,
   InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode,
@@ -206,6 +206,11 @@ class Parser {
     // SET
     if (upper === 'SET') {
       return this.parseSet();
+    }
+
+    // USE
+    if (upper === 'USE') {
+      return this.parseUse();
     }
 
     // PRINT
@@ -1309,6 +1314,12 @@ class Parser {
     return { type: 'set', token, target, value };
   }
 
+  private parseUse(): UseNode {
+    const token = this.advance(); // USE
+    const database = this.parseExpression();
+    return { type: 'use', token, database };
+  }
+
   private parsePrint(): PrintNode {
     const token = this.advance(); // PRINT
     const expression = this.parseExpression();
@@ -1397,7 +1408,7 @@ class Parser {
     switch (upper) {
       case 'SELECT': case 'INSERT': case 'UPDATE': case 'DELETE':
       case 'CREATE': case 'ALTER': case 'DROP': case 'TRUNCATE':
-      case 'DECLARE': case 'SET': case 'PRINT': case 'RETURN': case 'THROW': case 'RAISERROR':
+      case 'DECLARE': case 'SET': case 'PRINT': case 'RETURN': case 'THROW': case 'RAISERROR': case 'USE':
       case 'IF': case 'WHILE': case 'BEGIN': case 'WITH':
       case 'EXEC': case 'EXECUTE':
         return true;

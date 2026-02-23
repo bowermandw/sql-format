@@ -36,6 +36,7 @@ export type SqlNode =
   | ParenGroupNode
   | IdentifierNode
   | LiteralNode
+  | UseNode
   | RawTokenNode
   | ColumnListNode
   | PivotNode;
@@ -204,6 +205,12 @@ export interface ReturnNode {
   type: 'return';
   token: Token;
   expression?: SqlNode;
+}
+
+export interface UseNode {
+  type: 'use';
+  token: Token;
+  database: SqlNode;
 }
 
 export interface ThrowNode {

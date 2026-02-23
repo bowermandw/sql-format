@@ -1,5 +1,5 @@
 import { Token, TokenType } from './tokens';
-import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, ThrowNode, RaiserrorNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode } from './ast';
+import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, UseNode, ThrowNode, RaiserrorNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode } from './ast';
 import { FormatConfig } from './config';
 import { caseWord, categorizeWord } from './casing';
 
@@ -87,6 +87,7 @@ class Formatter {
       case 'declare':
       case 'print':
       case 'return':
+      case 'use':
       case 'throw':
       case 'raiserror':
       case 'rawToken':
@@ -110,6 +111,7 @@ class Formatter {
       case 'declare': return node.token;
       case 'print': return node.token;
       case 'return': return node.token;
+      case 'use': return node.token;
       case 'throw': return node.token;
       case 'raiserror': return node.token;
       case 'beginEnd': return node.beginToken;
@@ -175,6 +177,7 @@ class Formatter {
       }
       case 'print': return this.getLastToken(node.expression);
       case 'return': return node.expression ? this.getLastToken(node.expression) : node.token;
+      case 'use': return this.getLastToken(node.database);
       case 'createTable': {
         if (node.onFilegroup?.length) return node.onFilegroup[node.onFilegroup.length - 1];
         return undefined;
@@ -361,6 +364,7 @@ class Formatter {
       case 'set': return this.formatSet(node);
       case 'print': return this.formatPrint(node);
       case 'return': return this.formatReturn(node);
+      case 'use': return this.formatUse(node);
       case 'throw': return this.formatThrow(node);
       case 'raiserror': return this.formatRaiserror(node);
       case 'case': return this.formatCase(node);
@@ -1747,6 +1751,13 @@ class Formatter {
       return indent + this.kw('RETURN') + ' ' + this.formatNode(node.expression);
     }
     return indent + this.kw('RETURN');
+  }
+
+  // --- USE ---
+
+  private formatUse(node: UseNode): string {
+    const indent = this.indentStr();
+    return indent + this.kw('USE') + ' ' + this.formatNode(node.database);
   }
 
   // --- THROW ---
