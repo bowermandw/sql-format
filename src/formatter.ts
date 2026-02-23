@@ -1,5 +1,5 @@
 import { Token, TokenType } from './tokens';
-import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode } from './ast';
+import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, ThrowNode, RaiserrorNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode } from './ast';
 import { FormatConfig } from './config';
 import { caseWord, categorizeWord } from './casing';
 
@@ -87,6 +87,8 @@ class Formatter {
       case 'declare':
       case 'print':
       case 'return':
+      case 'throw':
+      case 'raiserror':
       case 'rawToken':
       case 'dropTable':
       case 'createTable':
@@ -108,7 +110,10 @@ class Formatter {
       case 'declare': return node.token;
       case 'print': return node.token;
       case 'return': return node.token;
+      case 'throw': return node.token;
+      case 'raiserror': return node.token;
       case 'beginEnd': return node.beginToken;
+      case 'tryCatch': return node.tryBlock.beginToken;
       case 'ifElse': return node.ifToken;
       case 'cte': return node.withToken;
       case 'createProcedure': return node.keywords[0];
@@ -350,11 +355,14 @@ class Formatter {
       case 'delete': return this.formatDelete(node);
       case 'cte': return this.formatCTE(node);
       case 'beginEnd': return this.formatBeginEnd(node);
+      case 'tryCatch': return this.formatTryCatch(node);
       case 'ifElse': return this.formatIfElse(node);
       case 'declare': return this.formatDeclare(node);
       case 'set': return this.formatSet(node);
       case 'print': return this.formatPrint(node);
       case 'return': return this.formatReturn(node);
+      case 'throw': return this.formatThrow(node);
+      case 'raiserror': return this.formatRaiserror(node);
       case 'case': return this.formatCase(node);
       case 'expression': return this.formatExpression(node);
       case 'functionCall': return this.formatFunctionCall(node);
@@ -1448,7 +1456,10 @@ class Formatter {
     const preserve = this.config.whitespace.newLines.preserveExistingEmptyLinesBetweenStatements;
     const indent = this.indentStr();
     const lines: string[] = [];
-    lines.push(indent + this.kw('BEGIN'));
+    const beginStr = node.modifier
+      ? indent + this.kw('BEGIN') + ' ' + this.kw(node.modifier.value)
+      : indent + this.kw('BEGIN');
+    lines.push(beginStr);
 
     this.indent++;
     for (const stmt of node.statements) {
@@ -1467,8 +1478,17 @@ class Formatter {
       }
       lines.push(endComments.replace(/\n$/, ''));
     }
-    lines.push(indent + this.kw('END'));
+    const endStr = node.endModifier
+      ? indent + this.kw('END') + ' ' + this.kw(node.endModifier.value)
+      : indent + this.kw('END');
+    lines.push(endStr);
     return lines.join('\n');
+  }
+
+  private formatTryCatch(node: TryCatchNode): string {
+    const tryFormatted = this.formatBeginEnd(node.tryBlock);
+    const catchFormatted = this.formatBeginEnd(node.catchBlock);
+    return tryFormatted + '\n' + catchFormatted;
   }
 
   // --- IF/ELSE ---
@@ -1611,6 +1631,43 @@ class Formatter {
       return indent + this.kw('RETURN') + ' ' + this.formatNode(node.expression);
     }
     return indent + this.kw('RETURN');
+  }
+
+  // --- THROW ---
+
+  private formatThrow(node: ThrowNode): string {
+    const indent = this.indentStr();
+    if (!node.errorNumber) {
+      return indent + this.kw('THROW');
+    }
+    let result = indent + this.kw('THROW') + ' ' + this.formatNode(node.errorNumber);
+    if (node.message) {
+      result += ', ' + this.formatNode(node.message);
+    }
+    if (node.state) {
+      result += ', ' + this.formatNode(node.state);
+    }
+    return result;
+  }
+
+  // --- RAISERROR ---
+
+  private formatRaiserror(node: RaiserrorNode): string {
+    const indent = this.indentStr();
+    const args = node.args.map(a => this.formatNode(a)).join(', ');
+    let result = indent + this.kw('RAISERROR') + ' (' + args + ')';
+    if (node.withOptions && node.withOptions.length > 0) {
+      const parts: string[] = [];
+      for (const t of node.withOptions) {
+        if (t.type === TokenType.Comma) {
+          parts[parts.length - 1] += ',';
+        } else {
+          parts.push(this.kw(t.value));
+        }
+      }
+      result += ' ' + parts.join(' ');
+    }
+    return result;
   }
 
   // --- CASE ---

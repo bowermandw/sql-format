@@ -67,6 +67,206 @@ describe('controlFlow.collapseShortStatements', () => {
   });
 });
 
+// ---- THROW ----
+
+describe('THROW statement', () => {
+  it('formats THROW with error number, message, and state', () => {
+    const result = formatSQL("THROW 51000, 'The record does not exist.', 1");
+    expect(result.trim()).toBe("THROW 51000, 'The record does not exist.', 1");
+  });
+
+  it('formats bare THROW (re-throw in CATCH)', () => {
+    const result = formatSQL('THROW');
+    expect(result.trim()).toBe('THROW');
+  });
+
+  it('formats THROW with variables', () => {
+    const result = formatSQL('THROW @errno, @msg, @state');
+    expect(result.trim()).toBe('THROW @errno, @msg, @state');
+  });
+
+  it('formats THROW inside BEGIN/CATCH block', () => {
+    const result = formatSQL('BEGIN CATCH\nTHROW;\nEND CATCH');
+    expect(result).toContain('THROW');
+  });
+
+  it('applies keyword casing to THROW', () => {
+    const result = formatSQL('throw 50000, \'Error\', 1', {
+      casing: { reservedKeywords: 'uppercase' },
+    });
+    expect(result).toContain('THROW');
+  });
+
+  it('inserts semicolon when insertSemicolons is enabled', () => {
+    const result = formatSQL("THROW 51000, 'Error', 1", {
+      whitespace: { insertSemicolons: 'insert' },
+    });
+    expect(result.trim()).toBe("THROW 51000, 'Error', 1;");
+  });
+});
+
+// ---- RAISERROR ----
+
+describe('RAISERROR statement', () => {
+  it('formats basic RAISERROR', () => {
+    const result = formatSQL("RAISERROR ('Error message', 16, 1)");
+    expect(result.trim()).toBe("RAISERROR ('Error message', 16, 1)");
+  });
+
+  it('formats RAISERROR with variables', () => {
+    const result = formatSQL('RAISERROR (@ErrorMessage, @ErrorSeverity, @ErrorState)');
+    expect(result.trim()).toBe('RAISERROR (@ErrorMessage, @ErrorSeverity, @ErrorState)');
+  });
+
+  it('formats RAISERROR with WITH NOWAIT', () => {
+    const result = formatSQL("RAISERROR ('Error', 16, 1) WITH NOWAIT");
+    expect(result.trim()).toBe("RAISERROR ('Error', 16, 1) WITH NOWAIT");
+  });
+
+  it('formats RAISERROR with WITH LOG', () => {
+    const result = formatSQL("RAISERROR ('Error', 20, 1) WITH LOG");
+    expect(result.trim()).toBe("RAISERROR ('Error', 20, 1) WITH LOG");
+  });
+
+  it('formats RAISERROR with multiple WITH options', () => {
+    const result = formatSQL("RAISERROR ('Error', 20, 1) WITH LOG, SETERROR");
+    expect(result.trim()).toBe("RAISERROR ('Error', 20, 1) WITH LOG, SETERROR");
+  });
+
+  it('formats RAISERROR with substitution parameters', () => {
+    const result = formatSQL("RAISERROR (N'This is message %s %d.', 10, 1, N'number', 5)");
+    expect(result.trim()).toBe("RAISERROR (N'This is message %s %d.', 10, 1, N'number', 5)");
+  });
+
+  it('formats RAISERROR with msg_id', () => {
+    const result = formatSQL('RAISERROR (50005, 10, 1, N\'abcde\')');
+    expect(result.trim()).toBe("RAISERROR (50005, 10, 1, N'abcde')");
+  });
+
+  it('applies keyword casing to RAISERROR', () => {
+    const result = formatSQL("raiserror ('Error', 16, 1)", {
+      casing: { reservedKeywords: 'uppercase' },
+    });
+    expect(result).toContain('RAISERROR');
+  });
+
+  it('inserts semicolon when insertSemicolons is enabled', () => {
+    const result = formatSQL("RAISERROR ('Error', 16, 1) WITH NOWAIT", {
+      whitespace: { insertSemicolons: 'insert' },
+    });
+    expect(result.trim()).toBe("RAISERROR ('Error', 16, 1) WITH NOWAIT;");
+  });
+});
+
+// ---- TRY...CATCH ----
+
+describe('TRY...CATCH statement', () => {
+  it('formats basic TRY...CATCH', () => {
+    const result = formatSQL('BEGIN TRY SELECT 1 / 0 END TRY BEGIN CATCH SELECT ERROR_MESSAGE() END CATCH');
+    const lines = result.trim().split('\n');
+    expect(lines[0]).toBe('BEGIN TRY');
+    expect(lines[1]).toContain('SELECT 1 / 0');
+    expect(lines[2]).toBe('END TRY');
+    expect(lines[3]).toBe('BEGIN CATCH');
+    expect(lines[4]).toContain('SELECT ERROR_MESSAGE()');
+    expect(lines[5]).toBe('END CATCH');
+  });
+
+  it('indents statements inside TRY and CATCH blocks', () => {
+    const result = formatSQL('BEGIN TRY\nSELECT 1\nEND TRY\nBEGIN CATCH\nSELECT 2\nEND CATCH');
+    const lines = result.trim().split('\n');
+    // Statements should be indented relative to BEGIN TRY / BEGIN CATCH
+    expect(lines[1]).toMatch(/^\s{4}SELECT/);
+    expect(lines[4]).toMatch(/^\s{4}SELECT/);
+  });
+
+  it('formats TRY...CATCH with multiple statements', () => {
+    const sql = `BEGIN TRY
+INSERT dbo.t1 (id) VALUES (1)
+INSERT dbo.t1 (id) VALUES (2)
+END TRY
+BEGIN CATCH
+PRINT 'Error'
+THROW
+END CATCH`;
+    const result = formatSQL(sql);
+    expect(result).toContain('BEGIN TRY');
+    expect(result).toContain('END TRY');
+    expect(result).toContain('BEGIN CATCH');
+    expect(result).toContain('END CATCH');
+    expect(result).toContain('THROW');
+  });
+
+  it('formats nested TRY...CATCH', () => {
+    const sql = `BEGIN TRY
+BEGIN TRY
+SELECT 1 / 0
+END TRY
+BEGIN CATCH
+SELECT 'inner'
+END CATCH
+END TRY
+BEGIN CATCH
+SELECT 'outer'
+END CATCH`;
+    const result = formatSQL(sql);
+    // Should have both inner and outer BEGIN TRY / END TRY / BEGIN CATCH / END CATCH
+    const matches = result.match(/BEGIN TRY/g);
+    expect(matches).toHaveLength(2);
+    const catchMatches = result.match(/END CATCH/g);
+    expect(catchMatches).toHaveLength(2);
+  });
+
+  it('applies keyword casing to TRY and CATCH', () => {
+    const result = formatSQL('begin try select 1 end try begin catch select 2 end catch', {
+      casing: { reservedKeywords: 'uppercase' },
+    });
+    expect(result).toContain('BEGIN TRY');
+    expect(result).toContain('END TRY');
+    expect(result).toContain('BEGIN CATCH');
+    expect(result).toContain('END CATCH');
+  });
+
+  it('applies lowercase casing to TRY and CATCH', () => {
+    const result = formatSQL('BEGIN TRY SELECT 1 END TRY BEGIN CATCH SELECT 2 END CATCH', {
+      casing: { reservedKeywords: 'lowercase' },
+    });
+    expect(result).toContain('begin try');
+    expect(result).toContain('end try');
+    expect(result).toContain('begin catch');
+    expect(result).toContain('end catch');
+  });
+
+  it('formats TRY...CATCH with RAISERROR in CATCH block', () => {
+    const sql = `BEGIN TRY
+SELECT 1 / 0
+END TRY
+BEGIN CATCH
+RAISERROR ('Error occurred', 16, 1)
+END CATCH`;
+    const result = formatSQL(sql);
+    expect(result).toContain('BEGIN TRY');
+    expect(result).toContain('RAISERROR');
+    expect(result).toContain('END CATCH');
+  });
+
+  it('formats empty CATCH block', () => {
+    const result = formatSQL('BEGIN TRY SELECT 1 END TRY BEGIN CATCH END CATCH');
+    expect(result).toContain('BEGIN TRY');
+    expect(result).toContain('END TRY');
+    expect(result).toContain('BEGIN CATCH');
+    expect(result).toContain('END CATCH');
+  });
+
+  it('preserves semicolons in TRY...CATCH', () => {
+    const result = formatSQL('BEGIN TRY SELECT 1; END TRY BEGIN CATCH SELECT 2; END CATCH', {
+      whitespace: { insertSemicolons: 'insert' },
+    });
+    expect(result).toContain('SELECT 1;');
+    expect(result).toContain('SELECT 2;');
+  });
+});
+
 // ---- Comments before END ----
 
 describe('comments before END keyword', () => {

@@ -16,10 +16,13 @@ export type SqlNode =
   | CaseNode
   | IfElseNode
   | BeginEndNode
+  | TryCatchNode
   | DeclareNode
   | SetNode
   | PrintNode
   | ReturnNode
+  | ThrowNode
+  | RaiserrorNode
   | ExpressionNode
   | FunctionCallNode
   | InExpressionNode
@@ -162,8 +165,16 @@ export interface IfElseNode {
 export interface BeginEndNode {
   type: 'beginEnd';
   beginToken: Token;
+  modifier?: Token;         // TRY or CATCH keyword after BEGIN
   statements: SqlNode[];
   endToken: Token;
+  endModifier?: Token;      // TRY or CATCH keyword after END
+}
+
+export interface TryCatchNode {
+  type: 'tryCatch';
+  tryBlock: BeginEndNode;
+  catchBlock: BeginEndNode;
 }
 
 export interface DeclareNode {
@@ -191,6 +202,21 @@ export interface ReturnNode {
   type: 'return';
   token: Token;
   expression?: SqlNode;
+}
+
+export interface ThrowNode {
+  type: 'throw';
+  token: Token;
+  errorNumber?: SqlNode;
+  message?: SqlNode;
+  state?: SqlNode;
+}
+
+export interface RaiserrorNode {
+  type: 'raiserror';
+  token: Token;
+  args: SqlNode[];
+  withOptions?: Token[];
 }
 
 export interface ExpressionNode {

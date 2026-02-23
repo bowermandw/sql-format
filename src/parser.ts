@@ -1,7 +1,7 @@
 import { Token, TokenType } from './tokens';
 import {
   SqlNode, BatchNode, SelectNode, CreateProcedureNode, ProcParameter,
-  BeginEndNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode,
+  BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, ThrowNode, RaiserrorNode,
   CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode,
   RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode,
   InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode,
@@ -216,6 +216,16 @@ class Parser {
     // RETURN
     if (upper === 'RETURN') {
       return this.parseReturn();
+    }
+
+    // THROW
+    if (upper === 'THROW') {
+      return this.parseThrow();
+    }
+
+    // RAISERROR
+    if (upper === 'RAISERROR') {
+      return this.parseRaiserror();
     }
 
     // EXEC / EXECUTE
@@ -1044,8 +1054,20 @@ class Parser {
 
   // --- Control flow ---
 
-  private parseBeginEnd(): BeginEndNode {
+  private parseBeginEnd(): BeginEndNode | TryCatchNode {
+    // Check for BEGIN TRY
+    if (this.peek(1).type === TokenType.Word &&
+        this.peek(1).value.toUpperCase() === 'TRY') {
+      return this.parseTryCatch();
+    }
+
     const beginToken = this.advance(); // BEGIN
+    // Check for BEGIN CATCH (standalone, without preceding TRY — shouldn't normally happen but handle gracefully)
+    let modifier: Token | undefined;
+    if (this.isWord('CATCH')) {
+      modifier = this.advance();
+    }
+
     const statements: SqlNode[] = [];
 
     while (!this.isEOF() && !this.isWord('END')) {
@@ -1062,7 +1084,59 @@ class Parser {
     }
 
     const endToken = this.isWord('END') ? this.advance() : beginToken;
-    return { type: 'beginEnd', beginToken, statements, endToken };
+    let endModifier: Token | undefined;
+    if (modifier && (this.isWord('CATCH') || this.isWord('TRY'))) {
+      endModifier = this.advance();
+    }
+    const node: BeginEndNode = { type: 'beginEnd', beginToken, statements, endToken };
+    if (modifier) node.modifier = modifier;
+    if (endModifier) node.endModifier = endModifier;
+    return node;
+  }
+
+  private parseTryCatch(): TryCatchNode {
+    // Parse BEGIN TRY block
+    const tryBlock = this.parseBeginTryOrCatch('TRY');
+
+    // Parse BEGIN CATCH block
+    let catchBlock: BeginEndNode;
+    if (this.isWord('BEGIN') &&
+        this.peek(1).type === TokenType.Word &&
+        this.peek(1).value.toUpperCase() === 'CATCH') {
+      catchBlock = this.parseBeginTryOrCatch('CATCH');
+    } else {
+      // Malformed: no CATCH block found, create an empty one
+      const fakeToken = tryBlock.endToken;
+      catchBlock = { type: 'beginEnd', beginToken: fakeToken, statements: [], endToken: fakeToken };
+    }
+
+    return { type: 'tryCatch', tryBlock, catchBlock };
+  }
+
+  private parseBeginTryOrCatch(kind: 'TRY' | 'CATCH'): BeginEndNode {
+    const beginToken = this.advance(); // BEGIN
+    const modifier = this.advance();   // TRY or CATCH
+    const statements: SqlNode[] = [];
+
+    while (!this.isEOF() && !this.isWord('END')) {
+      if (this.isType(TokenType.Semicolon)) {
+        if (statements.length > 0) {
+          (statements[statements.length - 1] as any)._hasSemicolon = true;
+        }
+        this.advance();
+        continue;
+      }
+      const stmt = this.parseStatement();
+      if (stmt) statements.push(stmt);
+      else break;
+    }
+
+    const endToken = this.isWord('END') ? this.advance() : beginToken;
+    let endModifier: Token | undefined;
+    if (this.isWord(kind)) {
+      endModifier = this.advance();
+    }
+    return { type: 'beginEnd', beginToken, modifier, statements, endToken, endModifier };
   }
 
   private parseIfElse(): IfElseNode {
@@ -1226,6 +1300,60 @@ class Parser {
     return { type: 'return', token, expression };
   }
 
+  private parseThrow(): ThrowNode {
+    const token = this.advance(); // THROW
+    // THROW with no arguments = re-throw in CATCH block
+    if (this.isStatementEnd() || this.isType(TokenType.Semicolon)) {
+      return { type: 'throw', token };
+    }
+    const errorNumber = this.parseExpression();
+    let message: SqlNode | undefined;
+    let state: SqlNode | undefined;
+    if (this.isType(TokenType.Comma)) {
+      this.advance(); // consume comma
+      message = this.parseExpression();
+    }
+    if (this.isType(TokenType.Comma)) {
+      this.advance(); // consume comma
+      state = this.parseExpression();
+    }
+    return { type: 'throw', token, errorNumber, message, state };
+  }
+
+  private parseRaiserror(): RaiserrorNode {
+    const token = this.advance(); // RAISERROR
+    const args: SqlNode[] = [];
+    // Expect opening paren
+    if (this.isType(TokenType.LeftParen)) {
+      this.advance(); // consume (
+      // Parse comma-separated arguments
+      while (!this.isEOF() && !this.isType(TokenType.RightParen)) {
+        args.push(this.parseExpression());
+        if (this.isType(TokenType.Comma)) {
+          this.advance(); // consume comma
+        }
+      }
+      if (this.isType(TokenType.RightParen)) {
+        this.advance(); // consume )
+      }
+    }
+    // Parse optional WITH clause
+    let withOptions: Token[] | undefined;
+    if (this.isWord('WITH')) {
+      withOptions = [this.advance()]; // WITH
+      // Parse option keywords (LOG, NOWAIT, SETERROR)
+      while (!this.isEOF() && !this.isStatementEnd() && !this.isType(TokenType.Semicolon)) {
+        withOptions.push(this.advance());
+        if (this.isType(TokenType.Comma)) {
+          withOptions.push(this.advance()); // consume comma between options
+        } else {
+          break;
+        }
+      }
+    }
+    return { type: 'raiserror', token, args, withOptions };
+  }
+
   private parseExec(): SqlNode {
     const token = this.advance(); // EXEC/EXECUTE
     // Consume until statement end or the start of another statement
@@ -1245,7 +1373,7 @@ class Parser {
     switch (upper) {
       case 'SELECT': case 'INSERT': case 'UPDATE': case 'DELETE':
       case 'CREATE': case 'ALTER': case 'DROP': case 'TRUNCATE':
-      case 'DECLARE': case 'SET': case 'PRINT': case 'RETURN':
+      case 'DECLARE': case 'SET': case 'PRINT': case 'RETURN': case 'THROW': case 'RAISERROR':
       case 'IF': case 'WHILE': case 'BEGIN': case 'WITH':
       case 'EXEC': case 'EXECUTE':
         return true;
