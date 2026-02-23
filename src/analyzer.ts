@@ -13,6 +13,10 @@ import {
   BeginEndNode,
   IfElseNode,
   CreateProcedureNode,
+  CreateTableNode,
+  DeclareNode,
+  ColumnDefNode,
+  ConstraintNode,
   SetNode,
 } from './ast';
 
@@ -26,6 +30,7 @@ export interface AnalyzeOptions {
   warnMissingSchema: boolean;
   warnMissingAlias: boolean;
   warnMissingNocount: boolean;
+  warnMissingNullability: boolean;
 }
 
 export function analyze(ast: BatchNode, options: AnalyzeOptions): Warning[] {
@@ -179,6 +184,26 @@ function walkStatement(
       break;
     }
 
+    case 'createTable': {
+      const ct = node as CreateTableNode;
+      if (options.warnMissingNullability && isTempOrVariable(ct.name as IdentifierNode)) {
+        checkMissingNullability(getIdentifierName(ct.name as IdentifierNode), ct.columns, warnings);
+      }
+      break;
+    }
+
+    case 'declare': {
+      const decl = node as DeclareNode;
+      if (options.warnMissingNullability) {
+        for (const v of decl.variables) {
+          if (v.tableColumns) {
+            checkMissingNullability(v.name.value, v.tableColumns, warnings);
+          }
+        }
+      }
+      break;
+    }
+
     case 'createProcedure': {
       const proc = node as CreateProcedureNode;
       if (options.warnMissingNocount) {
@@ -270,6 +295,33 @@ function checkMissingNocount(proc: CreateProcedureNode, warnings: Warning[]): vo
     const line = proc.keywords[0]?.line;
     const msg = `Warning: Stored procedure ${procName} does not contain SET NOCOUNT ON`;
     warnings.push({ message: line ? `${msg} (line ${line})` : msg, line });
+  }
+}
+
+function checkMissingNullability(
+  tableName: string,
+  columns: (ColumnDefNode | ConstraintNode)[],
+  warnings: Warning[],
+): void {
+  for (const col of columns) {
+    if (col.type !== 'columnDef') continue;
+    const colDef = col as ColumnDefNode;
+
+    const hasNullability = colDef.constraints.some(c => {
+      if (c.type !== 'constraint') return false;
+      const constraint = c as ConstraintNode;
+      const upper = constraint.tokens.map(t => t.value.toUpperCase());
+      // Check for NULL or NOT NULL
+      if (upper.includes('NULL')) return true;
+      return false;
+    });
+
+    if (!hasNullability) {
+      const colName = colDef.name.value;
+      const line = colDef.name.line;
+      const msg = `Warning: Column ${colName} in ${tableName} is missing NULL or NOT NULL`;
+      warnings.push({ message: line ? `${msg} (line ${line})` : msg, line });
+    }
   }
 }
 

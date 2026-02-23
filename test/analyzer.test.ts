@@ -3,13 +3,14 @@ import { tokenize, attachComments } from '../src/tokenizer';
 import { parse } from '../src/parser';
 import { analyze, Warning } from '../src/analyzer';
 
-function getWarnings(sql: string, opts: { schema?: boolean; alias?: boolean; nocount?: boolean } = {}): Warning[] {
+function getWarnings(sql: string, opts: { schema?: boolean; alias?: boolean; nocount?: boolean; nullability?: boolean } = {}): Warning[] {
   const tokens = attachComments(tokenize(sql));
   const ast = parse(tokens);
   return analyze(ast, {
     warnMissingSchema: opts.schema ?? false,
     warnMissingAlias: opts.alias ?? false,
     warnMissingNocount: opts.nocount ?? false,
+    warnMissingNullability: opts.nullability ?? false,
   });
 }
 
@@ -219,6 +220,69 @@ END`;
       const warnings = getWarnings(sql, { nocount: true });
       expect(warnings).toHaveLength(1);
       expect(warnings[0].message).toMatch(/\(line \d+\)/);
+    });
+  });
+
+  describe('missing nullability warnings', () => {
+    it('does not warn when all columns have NULL or NOT NULL', () => {
+      const sql = 'CREATE TABLE #t (id INT NOT NULL, name VARCHAR(50) NULL)';
+      const warnings = getWarnings(sql, { nullability: true });
+      expect(warnings).toHaveLength(0);
+    });
+
+    it('warns when a column is missing nullability', () => {
+      const sql = 'CREATE TABLE #t (id INT, name VARCHAR(50) NOT NULL)';
+      const warnings = getWarnings(sql, { nullability: true });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).toContain('Column id in #t is missing NULL or NOT NULL');
+    });
+
+    it('warns for table variable missing nullability', () => {
+      const sql = 'DECLARE @t TABLE (id INT, name VARCHAR(50) NULL)';
+      const warnings = getWarnings(sql, { nullability: true });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).toContain('Column id in @t is missing NULL or NOT NULL');
+    });
+
+    it('does not warn for regular (non-temp) CREATE TABLE', () => {
+      const sql = 'CREATE TABLE dbo.t1 (id INT)';
+      const warnings = getWarnings(sql, { nullability: true });
+      expect(warnings).toHaveLength(0);
+    });
+
+    it('warns for column with IDENTITY but no NULL/NOT NULL', () => {
+      const sql = 'CREATE TABLE #t (id INT IDENTITY(1,1), name VARCHAR(50) NOT NULL)';
+      const warnings = getWarnings(sql, { nullability: true });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).toContain('Column id in #t');
+    });
+
+    it('warns only for columns missing nullability when some have it', () => {
+      const sql = 'CREATE TABLE #t (id INT, name VARCHAR(50) NOT NULL, age INT)';
+      const warnings = getWarnings(sql, { nullability: true });
+      expect(warnings).toHaveLength(2);
+      expect(warnings[0].message).toContain('Column id');
+      expect(warnings[1].message).toContain('Column age');
+    });
+
+    it('handles bracketed column names', () => {
+      const sql = 'CREATE TABLE #t ([col1] INT, [col2] VARCHAR(50) NULL)';
+      const warnings = getWarnings(sql, { nullability: true });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).toContain('[col1]');
+    });
+
+    it('includes line number in warning', () => {
+      const sql = 'CREATE TABLE #t (\n  id INT\n)';
+      const warnings = getWarnings(sql, { nullability: true });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).toMatch(/\(line \d+\)/);
+    });
+
+    it('does not warn when option is disabled', () => {
+      const sql = 'CREATE TABLE #t (id INT)';
+      const warnings = getWarnings(sql, { nullability: false });
+      expect(warnings).toHaveLength(0);
     });
   });
 
