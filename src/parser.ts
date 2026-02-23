@@ -716,7 +716,12 @@ class Parser {
       if (!this.isType(TokenType.RightParen)) {
         values.push(this.parseExpression());
         while (this.isType(TokenType.Comma)) {
-          this.advance();
+          const commaToken = this.advance();
+          // Transfer trailing comment from comma to preceding value
+          if (commaToken.trailingComment && values.length > 0) {
+            (values[values.length - 1] as any)._trailingComment = commaToken.trailingComment;
+          }
+          if (this.isType(TokenType.RightParen)) break; // trailing comma
           values.push(this.parseExpression());
         }
       }

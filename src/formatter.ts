@@ -2263,6 +2263,13 @@ class Formatter {
     const valuesStr = formattedValues.join(', ');
     const forColumnStr = this.kw('FOR') + ' ' + this.formatNode(node.pivotColumn) + ' ' + this.kw('IN');
 
+    // Check if any values have comments (trailing or leading)
+    const hasComments = node.values.some(v => {
+      const tc = (v as any)._trailingComment;
+      const firstToken = this.getFirstToken(v);
+      return tc || firstToken?.leadingComments?.length;
+    });
+
     const parenOnNewLine = inConfig.placeOpeningParenthesisOnNewLine;
     const firstValueOnNewLine = inConfig.placeFirstValueOnNewLine;
 
@@ -2276,45 +2283,92 @@ class Formatter {
       }
       if (firstValueOnNewLine === 'always') {
         const valueIndent = this.indentStr(bi + 2);
-        const valueLine = valueIndent + valuesStr;
-        const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
 
-        if (!this.config.whitespace.wrapLongLines || valueLine.length <= maxLineLength) {
-          result += '\n' + valueLine + '\n' + innerIndent + ')';
-        } else {
-          // Wrap values: pack as many as fit per line
-          const available = maxLineLength - valueIndent.length;
-          const wrappedLines: string[][] = [];
-          let currentGroup: string[] = [];
-          let currentLen = 0;
-
-          for (const val of formattedValues) {
-            const addLen = currentGroup.length === 0 ? val.length : val.length + 2;
-            if (currentGroup.length > 0 && currentLen + addLen > available) {
-              wrappedLines.push(currentGroup);
-              currentGroup = [val];
-              currentLen = val.length;
-            } else {
-              currentGroup.push(val);
-              currentLen += addLen;
-            }
-          }
-          if (currentGroup.length > 0) {
-            wrappedLines.push(currentGroup);
-          }
-
+        if (hasComments) {
+          // When comments exist, place each value on its own line to preserve comments
           result += '\n';
-          for (let i = 0; i < wrappedLines.length; i++) {
-            result += valueIndent + wrappedLines[i].join(', ');
-            if (i < wrappedLines.length - 1) {
-              result += ',\n';
+          for (let i = 0; i < node.values.length; i++) {
+            const v = node.values[i];
+            const firstToken = this.getFirstToken(v);
+            // Emit leading comments
+            if (firstToken?.leadingComments?.length) {
+              for (const c of firstToken.leadingComments) {
+                result += valueIndent + c.value + '\n';
+              }
             }
+            const comma = i < node.values.length - 1 ? ',' : '';
+            result += valueIndent + formattedValues[i] + comma;
+            // Emit trailing comment
+            const tc = (v as any)._trailingComment as Token | undefined;
+            if (tc) {
+              result += ' ' + tc.value;
+            }
+            result += '\n';
           }
-          result += '\n' + innerIndent + ')';
+          result += innerIndent + ')';
+        } else {
+          const valueLine = valueIndent + valuesStr;
+          const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
+
+          if (!this.config.whitespace.wrapLongLines || valueLine.length <= maxLineLength) {
+            result += '\n' + valueLine + '\n' + innerIndent + ')';
+          } else {
+            // Wrap values: pack as many as fit per line
+            const available = maxLineLength - valueIndent.length;
+            const wrappedLines: string[][] = [];
+            let currentGroup: string[] = [];
+            let currentLen = 0;
+
+            for (const val of formattedValues) {
+              const addLen = currentGroup.length === 0 ? val.length : val.length + 2;
+              if (currentGroup.length > 0 && currentLen + addLen > available) {
+                wrappedLines.push(currentGroup);
+                currentGroup = [val];
+                currentLen = val.length;
+              } else {
+                currentGroup.push(val);
+                currentLen += addLen;
+              }
+            }
+            if (currentGroup.length > 0) {
+              wrappedLines.push(currentGroup);
+            }
+
+            result += '\n';
+            for (let i = 0; i < wrappedLines.length; i++) {
+              result += valueIndent + wrappedLines[i].join(', ');
+              if (i < wrappedLines.length - 1) {
+                result += ',\n';
+              }
+            }
+            result += '\n' + innerIndent + ')';
+          }
         }
       } else {
         result += space + valuesStr + space + ')';
       }
+      lines.push(result);
+    } else if (hasComments) {
+      // Comments present in default mode — expand to one-value-per-line
+      const valueIndent = this.indentStr(bi + 2);
+      let result = innerIndent + forColumnStr + '\n' + innerIndent + '(\n';
+      for (let i = 0; i < node.values.length; i++) {
+        const v = node.values[i];
+        const firstToken = this.getFirstToken(v);
+        if (firstToken?.leadingComments?.length) {
+          for (const c of firstToken.leadingComments) {
+            result += valueIndent + c.value + '\n';
+          }
+        }
+        const comma = i < node.values.length - 1 ? ',' : '';
+        result += valueIndent + formattedValues[i] + comma;
+        const tc = (v as any)._trailingComment as Token | undefined;
+        if (tc) {
+          result += ' ' + tc.value;
+        }
+        result += '\n';
+      }
+      result += innerIndent + ')';
       lines.push(result);
     } else {
       // Default: single-line or wrap-on-overflow
