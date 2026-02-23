@@ -2311,7 +2311,15 @@ class Formatter {
           const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
           const subsequentOnNewLines = inConfig.placeSubsequentValuesOnNewLines;
 
-          if (!this.config.whitespace.wrapLongLines || valueLine.length <= maxLineLength || subsequentOnNewLines === 'never') {
+          if (subsequentOnNewLines === 'always') {
+            // One value per line
+            result += '\n';
+            for (let i = 0; i < formattedValues.length; i++) {
+              const comma = i < formattedValues.length - 1 ? ',' : '';
+              result += valueIndent + formattedValues[i] + comma + '\n';
+            }
+            result += innerIndent + ')';
+          } else if (!this.config.whitespace.wrapLongLines || valueLine.length <= maxLineLength) {
             result += '\n' + valueLine + '\n' + innerIndent + ')';
           } else {
             // Wrap values: pack as many as fit per line
@@ -2378,7 +2386,17 @@ class Formatter {
       const maxLineLength = this.config.whitespace.wrapLinesLongerThan;
 
       const subsequentOnNewLines = inConfig.placeSubsequentValuesOnNewLines;
-      if (!this.config.whitespace.wrapLongLines || forLine.length <= maxLineLength || subsequentOnNewLines === 'never') {
+      if (subsequentOnNewLines === 'always') {
+        // One value per line
+        const valueIndent = this.indentStr(bi + 2);
+        let result = innerIndent + forColumnStr + '\n' + innerIndent + '(\n';
+        for (let i = 0; i < formattedValues.length; i++) {
+          const comma = i < formattedValues.length - 1 ? ',' : '';
+          result += valueIndent + formattedValues[i] + comma + '\n';
+        }
+        result += innerIndent + ')';
+        lines.push(result);
+      } else if (!this.config.whitespace.wrapLongLines || forLine.length <= maxLineLength) {
         lines.push(forLine);
       } else {
         // Wrap values: pack as many as fit per line, aligning after the opening paren
