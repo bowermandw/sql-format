@@ -1330,6 +1330,7 @@ class Formatter {
       s += ' ' + this.kw('VALUES') + ' (' + node.values.rows[0].map(v => this.formatNode(v)).join(', ') + ')';
     }
     if (node.select) {
+      if (this.selectHasClauseComments(node.select)) return null;
       s += ' ' + this.collapseSelect(node.select);
     }
     if (node.exec) {
@@ -2628,7 +2629,7 @@ class Formatter {
       const dml = this.config.dml;
       const alias = this.formatParenGroupAlias(node);
       const innerSelect = node.inner[0] as SelectNode;
-      const hasInnerComments = !!innerSelect.selectToken?.leadingComments?.length;
+      const hasInnerComments = !!innerSelect.selectToken?.leadingComments?.length || this.selectHasClauseComments(innerSelect);
 
       // Try collapsing the subquery if configured (skip collapse if pivot, close comments, or inner leading comments)
       if (dml.collapseShortSubqueries && !node.pivot && !node.closeComments?.length && !hasInnerComments) {
