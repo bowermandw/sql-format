@@ -849,10 +849,43 @@ class Formatter {
   /** Check if any clause token in a SELECT has leading comments that must be preserved. */
   private selectHasClauseComments(node: SelectNode): boolean {
     if (node.from?.token?.leadingComments?.length) return true;
+    // Check FROM source and joins
+    if (node.from) {
+      const sourceToken = this.getFirstToken(node.from.source);
+      if (sourceToken?.leadingComments?.length) return true;
+      for (const j of node.from.joins) {
+        const joinToken = this.getFirstToken(j);
+        if (joinToken?.leadingComments?.length) return true;
+      }
+    }
     if (node.where?.token?.leadingComments?.length) return true;
+    // Check WHERE condition
+    if (node.where) {
+      const condToken = this.getFirstToken(node.where.condition);
+      if (condToken?.leadingComments?.length) return true;
+    }
     if (node.groupBy?.tokens[0]?.leadingComments?.length) return true;
+    // Check GROUP BY items
+    if (node.groupBy) {
+      for (const item of node.groupBy.items) {
+        const t = this.getFirstToken(item);
+        if (t?.leadingComments?.length) return true;
+      }
+    }
     if (node.having?.token?.leadingComments?.length) return true;
+    // Check HAVING condition
+    if (node.having) {
+      const condToken = this.getFirstToken(node.having.condition);
+      if (condToken?.leadingComments?.length) return true;
+    }
     if (node.orderBy?.tokens[0]?.leadingComments?.length) return true;
+    // Check ORDER BY items
+    if (node.orderBy) {
+      for (const item of node.orderBy.items) {
+        const t = this.getFirstToken(item.expr);
+        if (t?.leadingComments?.length) return true;
+      }
+    }
     // Check for comments on columns (including before parenthesized expressions)
     for (const col of node.columns) {
       const firstToken = this.getFirstToken(col);
@@ -1046,8 +1079,12 @@ class Formatter {
     const clauseIndent = this.indentStr(bi + 1);
 
     // Format condition with AND/OR handling
+    const savedIndent = this.indent;
+    this.indent = bi + 1;
+    const comments = this.formatLeadingComments(node.condition);
+    this.indent = savedIndent;
     const condStr = this.formatCondition(node.condition, bi + 1);
-    return indent + this.kw('WHERE') + '\n' + clauseIndent + condStr;
+    return indent + this.kw('WHERE') + '\n' + (comments || '') + clauseIndent + condStr;
   }
 
   private formatCondition(node: SqlNode, indentLevel: number): string {
@@ -1195,9 +1232,17 @@ class Formatter {
     const bi = baseIndent ?? this.indent;
     const indent = this.indentStr(bi);
     const clauseIndent = this.indentStr(bi + 1);
-    const items = node.items.map(i => this.formatNode(i));
-    return indent + this.kw('GROUP') + ' ' + this.kw('BY') + '\n' +
-      items.map(i => clauseIndent + i).join(',\n');
+    const lines: string[] = [indent + this.kw('GROUP') + ' ' + this.kw('BY')];
+    const savedIndent = this.indent;
+    this.indent = bi + 1;
+    for (let i = 0; i < node.items.length; i++) {
+      const comments = this.formatLeadingComments(node.items[i]);
+      if (comments) lines.push(comments.replace(/\n$/, ''));
+      const comma = i < node.items.length - 1 ? ',' : '';
+      lines.push(clauseIndent + this.formatNode(node.items[i]) + comma);
+    }
+    this.indent = savedIndent;
+    return lines.join('\n');
   }
 
   // --- ORDER BY ---
@@ -1214,8 +1259,17 @@ class Formatter {
     const bi = baseIndent ?? this.indent;
     const indent = this.indentStr(bi);
     const clauseIndent = this.indentStr(bi + 1);
-    return indent + this.kw('ORDER') + ' ' + this.kw('BY') + '\n' +
-      items.map(i => clauseIndent + i).join(',\n');
+    const lines: string[] = [indent + this.kw('ORDER') + ' ' + this.kw('BY')];
+    const savedIndent = this.indent;
+    this.indent = bi + 1;
+    for (let i = 0; i < node.items.length; i++) {
+      const comments = this.formatLeadingComments(node.items[i].expr);
+      if (comments) lines.push(comments.replace(/\n$/, ''));
+      const comma = i < node.items.length - 1 ? ',' : '';
+      lines.push(clauseIndent + items[i] + comma);
+    }
+    this.indent = savedIndent;
+    return lines.join('\n');
   }
 
   // --- HAVING ---
@@ -1224,7 +1278,11 @@ class Formatter {
     const bi = baseIndent ?? this.indent;
     const indent = this.indentStr(bi);
     const clauseIndent = this.indentStr(bi + 1);
-    return indent + this.kw('HAVING') + '\n' + clauseIndent + this.formatNode(node.condition);
+    const savedIndent = this.indent;
+    this.indent = bi + 1;
+    const comments = this.formatLeadingComments(node.condition);
+    this.indent = savedIndent;
+    return indent + this.kw('HAVING') + '\n' + (comments || '') + clauseIndent + this.formatNode(node.condition);
   }
 
   // --- INSERT ---
