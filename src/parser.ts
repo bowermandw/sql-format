@@ -438,7 +438,7 @@ class Parser {
     // Check if the next token is a constraint keyword instead of a data type
     // This indicates a missing data type
     const upper = this.current().type === TokenType.Word ? this.current().value.toUpperCase() : '';
-    const isConstraintKeyword = ['NOT', 'NULL', 'DEFAULT', 'IDENTITY', 'PRIMARY', 'UNIQUE', 'CHECK', 'REFERENCES', 'CONSTRAINT'].includes(upper);
+    const isConstraintKeyword = ['NOT', 'NULL', 'DEFAULT', 'IDENTITY', 'PRIMARY', 'UNIQUE', 'CHECK', 'REFERENCES', 'CONSTRAINT', 'COLLATE'].includes(upper);
 
     let dataType: SqlNode;
     if (isConstraintKeyword || this.isType(TokenType.Comma) || this.isType(TokenType.RightParen)) {
@@ -454,7 +454,8 @@ class Parser {
     while (!this.isEOF() && !this.isType(TokenType.Comma) && !this.isType(TokenType.RightParen)) {
       if (this.isWord('NOT') || this.isWord('NULL') || this.isWord('DEFAULT') ||
           this.isWord('IDENTITY') || this.isWord('PRIMARY') || this.isWord('UNIQUE') ||
-          this.isWord('CHECK') || this.isWord('REFERENCES') || this.isWord('CONSTRAINT')) {
+          this.isWord('CHECK') || this.isWord('REFERENCES') || this.isWord('CONSTRAINT') ||
+          this.isWord('COLLATE')) {
         const tokens: Token[] = [];
         const firstWord = this.current().value.toUpperCase();
         tokens.push(this.advance());
@@ -488,6 +489,11 @@ class Parser {
           if (!this.isType(TokenType.Comma) && !this.isType(TokenType.RightParen) &&
               !this.isWord('NOT') && !this.isWord('NULL') && !this.isWord('IDENTITY') &&
               !this.isWord('PRIMARY') && !this.isWord('UNIQUE') && !this.isWord('CHECK')) {
+            tokens.push(this.advance());
+          }
+        } else if (firstWord === 'COLLATE') {
+          // Consume the collation name
+          if (!this.isEOF() && !this.isType(TokenType.Comma) && !this.isType(TokenType.RightParen)) {
             tokens.push(this.advance());
           }
         }

@@ -256,3 +256,60 @@ describe('ALTER TABLE', () => {
     expect(result).toContain('ALTER TABLE [dbo].[Orders] DROP CONSTRAINT [FK_Orders]');
   });
 });
+
+// ---- COLLATE support ----
+
+describe('COLLATE in column definitions', () => {
+  it('CREATE TABLE with COLLATE on a column', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (col VARCHAR(50) COLLATE Latin1_General_CI_AS)');
+    expect(result).toContain('COLLATE Latin1_General_CI_AS');
+  });
+
+  it('COLLATE with NOT NULL and DEFAULT preserves ordering', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (col VARCHAR(50) COLLATE Latin1_General_CI_AS NOT NULL DEFAULT \'abc\')');
+    expect(result).toContain('COLLATE Latin1_General_CI_AS');
+    expect(result).toContain('NOT NULL');
+    expect(result).toContain('DEFAULT');
+  });
+
+  it('DECLARE table variable with COLLATE column', () => {
+    const result = formatSQL('DECLARE @t TABLE (col VARCHAR(50) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL)');
+    expect(result).toContain('COLLATE SQL_Latin1_General_CP1_CI_AS');
+    expect(result).toContain('NOT NULL');
+  });
+
+  it('applies keyword casing to COLLATE but not collation name', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (col VARCHAR(50) collate Latin1_General_CI_AS)', {
+      casing: { reservedKeywords: 'uppercase' },
+    });
+    expect(result).toContain('COLLATE Latin1_General_CI_AS');
+  });
+});
+
+// ---- Comments in column definitions ----
+
+describe('comments in CREATE TABLE / DECLARE TABLE column definitions', () => {
+  it('preserves line comments before columns in CREATE TABLE', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (\n  -- primary key\n  id INT NOT NULL,\n  name VARCHAR(50)\n)');
+    expect(result).toContain('-- primary key');
+    expect(result).toContain('id INT NOT NULL');
+  });
+
+  it('preserves block comments before columns in CREATE TABLE', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (\n  /* the name */ name VARCHAR(50)\n)');
+    expect(result).toContain('/* the name */');
+    expect(result).toContain('name VARCHAR(50)');
+  });
+
+  it('preserves line comments before columns in DECLARE TABLE', () => {
+    const result = formatSQL('DECLARE @t TABLE (\n  -- comment\n  id INT NOT NULL,\n  name VARCHAR(50)\n)');
+    expect(result).toContain('-- comment');
+    expect(result).toContain('id INT NOT NULL');
+  });
+
+  it('preserves block comments before columns in DECLARE TABLE', () => {
+    const result = formatSQL('DECLARE @t TABLE (\n  /* block */ name VARCHAR(50)\n)');
+    expect(result).toContain('/* block */');
+    expect(result).toContain('name VARCHAR(50)');
+  });
+});

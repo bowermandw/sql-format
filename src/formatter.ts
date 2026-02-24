@@ -447,8 +447,12 @@ class Formatter {
     const kw = node.keywords.map(t => this.kw(t.value)).join(' ');
     const name = this.formatNode(node.name);
 
-    // Try collapse
-    if (this.config.ddl.collapseShortStatements) {
+    // Try collapse (skip if any column has leading comments)
+    const hasColumnComments = node.columns.some(c => {
+      const token = c.type === 'columnDef' ? (c as ColumnDefNode).name : (c as ConstraintNode).tokens[0];
+      return token?.leadingComments?.length;
+    });
+    if (this.config.ddl.collapseShortStatements && !hasColumnComments) {
       const collapsed = this.collapseCreateTable(node, kw, name);
       if (collapsed.length <= this.config.ddl.collapseStatementsShorterThan) {
         return baseIndent + collapsed;
@@ -468,10 +472,12 @@ class Formatter {
       }));
     }
     const colStrs = node.columns.map(c => {
-      if (c.type === 'constraint') {
-        return colIndent + this.formatConstraint(c as ConstraintNode);
-      }
-      return colIndent + this.formatColumnDef(c as ColumnDefNode, nameWidth);
+      const token = c.type === 'columnDef' ? (c as ColumnDefNode).name : (c as ConstraintNode).tokens[0];
+      const comments = this.formatTokenLeadingComments(token, this.indent + 1);
+      const line = c.type === 'constraint'
+        ? colIndent + this.formatConstraint(c as ConstraintNode)
+        : colIndent + this.formatColumnDef(c as ColumnDefNode, nameWidth);
+      return comments ? comments.trimEnd() + '\n' + line : line;
     });
     parts.push(colStrs.join(',\n'));
     parts.push(baseIndent + ')');
@@ -1686,10 +1692,12 @@ class Formatter {
           }));
         }
         const colStrs = v.tableColumns.map(c => {
-          if (c.type === 'constraint') {
-            return colIndent + this.formatConstraint(c as ConstraintNode);
-          }
-          return colIndent + this.formatColumnDef(c as ColumnDefNode, colNameWidth);
+          const token = c.type === 'columnDef' ? (c as ColumnDefNode).name : (c as ConstraintNode).tokens[0];
+          const comments = this.formatTokenLeadingComments(token, this.indent + 1);
+          const line = c.type === 'constraint'
+            ? colIndent + this.formatConstraint(c as ConstraintNode)
+            : colIndent + this.formatColumnDef(c as ColumnDefNode, colNameWidth);
+          return comments ? comments.trimEnd() + '\n' + line : line;
         });
         return name + ' ' + asPrefix + this.kw('TABLE') + '\n' +
           baseIndent + '(\n' +
