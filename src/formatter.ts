@@ -19,6 +19,7 @@ class Formatter {
   private config: FormatConfig;
   private indent: number = 0;
   private tabStr: string;
+  private emittedComments = new Set<Token>();
 
   constructor(config: FormatConfig) {
     this.config = config;
@@ -36,11 +37,45 @@ class Formatter {
     return caseWord(word, this.config.casing);
   }
 
-  private tokenValue(token: Token): string {
-    if (token.type === TokenType.Word) {
-      return caseWord(token.value, this.config.casing);
+  /**
+   * Emit the keyword for a token using kw()-style casing, but also auto-emit
+   * any unemitted leading/trailing comments attached to the token.
+   */
+  private kwToken(token: Token): string {
+    let prefix = '';
+    if (token.leadingComments) {
+      for (const c of token.leadingComments) {
+        if (!this.emittedComments.has(c)) {
+          this.emittedComments.add(c);
+          prefix += c.value + '\n' + this.indentStr();
+        }
+      }
     }
-    return token.value;
+    let suffix = '';
+    if (token.trailingComment && !this.emittedComments.has(token.trailingComment)) {
+      this.emittedComments.add(token.trailingComment);
+      suffix = ' ' + token.trailingComment.value;
+    }
+    return prefix + this.kw(token.value.toUpperCase()) + suffix;
+  }
+
+  private tokenValue(token: Token): string {
+    let prefix = '';
+    if (token.leadingComments) {
+      for (const c of token.leadingComments) {
+        if (!this.emittedComments.has(c)) {
+          this.emittedComments.add(c);
+          prefix += c.value + '\n' + this.indentStr();
+        }
+      }
+    }
+    let suffix = '';
+    if (token.trailingComment && !this.emittedComments.has(token.trailingComment)) {
+      this.emittedComments.add(token.trailingComment);
+      suffix = ' ' + token.trailingComment.value;
+    }
+    const val = token.type === TokenType.Word ? caseWord(token.value, this.config.casing) : token.value;
+    return prefix + val + suffix;
   }
 
   /** Build the semicolon suffix string based on whitespaceBeforeSemicolon config. */
@@ -242,6 +277,7 @@ class Formatter {
     const preserve = this.config.whitespace.newLines.preserveExistingEmptyLinesBetweenComments;
     const lines: string[] = [];
     for (const c of allComments) {
+      this.emittedComments.add(c);
       if (preserve && c.precedingBlankLine && lines.length > 0) {
         lines.push('');
       }
@@ -260,6 +296,7 @@ class Formatter {
     const preserve = this.config.whitespace.newLines.preserveExistingEmptyLinesBetweenComments;
     const lines: string[] = [];
     for (const c of token.leadingComments) {
+      this.emittedComments.add(c);
       if (preserve && c.precedingBlankLine && lines.length > 0) {
         lines.push('');
       }
@@ -275,13 +312,14 @@ class Formatter {
   private formatCloseComments(comments: Token[] | undefined, indentLevel: number): string {
     if (!comments?.length) return '';
     const indent = this.indentStr(indentLevel + 1);
-    return '\n' + comments.map(c => indent + c.value).join('\n');
+    return '\n' + comments.map(c => { this.emittedComments.add(c); return indent + c.value; }).join('\n');
   }
 
   /** Get the trailing inline comment from the last token of a node (if any). */
   private getTrailingComment(node: SqlNode): string {
     const token = this.getLastToken(node);
     if (token?.trailingComment) {
+      this.emittedComments.add(token.trailingComment);
       return ' ' + token.trailingComment.value;
     }
     return '';
@@ -324,8 +362,8 @@ class Formatter {
     }
     // Output any trailing comments at the end of the file
     if (node.trailingComments?.length) {
-      // Add blank line before trailing comments if there was one in the source
       for (const c of node.trailingComments) {
+        this.emittedComments.add(c);
         parts.push(c.value);
       }
     }
@@ -935,7 +973,7 @@ class Formatter {
         s += ' ' + this.collapseJoin(j);
       }
     }
-    if (node.where) s += ' ' + this.kw('WHERE') + ' ' + this.formatNode(node.where.condition);
+    if (node.where) s += ' ' + this.kwToken(node.where.token) + ' ' + this.formatNode(node.where.condition);
     if (node.groupBy) s += ' ' + this.kw('GROUP') + ' ' + this.kw('BY') + ' ' + node.groupBy.items.map(i => this.formatNode(i)).join(', ');
     if (node.having) s += ' ' + this.kw('HAVING') + ' ' + this.formatNode(node.having.condition);
     if (node.orderBy) {
@@ -1110,7 +1148,7 @@ class Formatter {
     const comments = this.formatLeadingComments(node.condition);
     this.indent = savedIndent;
     const condStr = this.formatCondition(node.condition, bi + 1);
-    return indent + this.kw('WHERE') + '\n' + (comments || '') + clauseIndent + condStr;
+    return indent + this.kwToken(node.token) + '\n' + (comments || '') + clauseIndent + condStr;
   }
 
   private formatCondition(node: SqlNode, indentLevel: number): string {
@@ -2213,8 +2251,24 @@ class Formatter {
    * standalone SQL keywords.
    */
   private formatIdentifierPart(token: Token): string {
+    let prefix = '';
+    if (token.leadingComments) {
+      for (const c of token.leadingComments) {
+        if (!this.emittedComments.has(c)) {
+          this.emittedComments.add(c);
+          prefix += c.value + '\n' + this.indentStr();
+        }
+      }
+    }
+    let suffix = '';
+    if (token.trailingComment && !this.emittedComments.has(token.trailingComment)) {
+      this.emittedComments.add(token.trailingComment);
+      suffix = ' ' + token.trailingComment.value;
+    }
     const idConfig = this.config.identifiers;
     const mode = idConfig.encloseIdentifiers;
+
+    let core: string;
 
     // Already-quoted identifier: [name] or "name"
     if (token.type === TokenType.QuotedIdentifier) {
@@ -2222,42 +2276,41 @@ class Formatter {
       if (mode === 'withoutBrackets') {
         // Strip brackets, but keep them on reserved words if configured
         if (idConfig.alwaysBracketReservedWordIdentifiers && isReservedWord(inner)) {
-          return '[' + inner + ']';
+          core = '[' + inner + ']';
+        } else {
+          core = inner;
         }
-        return inner;
-      }
-      if (mode === 'withBrackets') {
+      } else if (mode === 'withBrackets') {
         // Normalize double-quotes to brackets
-        return '[' + inner + ']';
+        core = '[' + inner + ']';
+      } else {
+        core = token.value; // asis
       }
-      return token.value; // asis
-    }
-
-    // Regular word token in an identifier position
-    if (token.type === TokenType.Word) {
+    } else if (token.type === TokenType.Word) {
+      // Regular word token in an identifier position
       // Skip @variables and wildcards
       if (token.value.startsWith('@') || token.value === '*') {
-        return caseWord(token.value, this.config.casing);
-      }
+        core = caseWord(token.value, this.config.casing);
+      } else {
+        const cased = caseWord(token.value, this.config.casing);
 
-      const cased = caseWord(token.value, this.config.casing);
-
-      if (mode === 'withBrackets') {
-        const category = categorizeWord(token.value);
-        // Only bracket user-defined identifiers (not keywords, functions, data types)
-        if (category === 'identifier') {
-          return '[' + cased + ']';
+        if (mode === 'withBrackets') {
+          const category = categorizeWord(token.value);
+          // Only bracket user-defined identifiers (not keywords, functions, data types)
+          if (category === 'identifier') {
+            core = '[' + cased + ']';
+          } else {
+            core = cased;
+          }
+        } else {
+          core = cased; // withoutBrackets or asis
         }
       }
-
-      if (mode === 'withoutBrackets') {
-        return cased; // already unbracketed
-      }
-
-      return cased; // asis
+    } else {
+      core = token.value;
     }
 
-    return token.value;
+    return prefix + core + suffix;
   }
 
   // --- Literals ---
@@ -2432,9 +2485,9 @@ class Formatter {
   // --- EXISTS ---
 
   private formatExists(node: ExistsNode): string {
-    const notStr = node.notToken ? this.kw('NOT') + ' ' : '';
+    const notStr = node.notToken ? this.kwToken(node.notToken) + ' ' : '';
     const subquery = this.formatNode(node.subquery);
-    return `${notStr}${this.kw('EXISTS')} (${subquery})`;
+    return `${notStr}${this.kwToken(node.existsToken)} (${subquery})`;
   }
 
   // --- PIVOT / UNPIVOT ---

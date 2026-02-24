@@ -1475,4 +1475,43 @@ describe('USE statement', () => {
     const second = formatSQL(first);
     expect(first).toBe(second);
   });
+
+  // --- Comment safety net tests ---
+
+  it('preserves comment inside constraint definition', () => {
+    const sql = 'CREATE TABLE t1 (\n  col1 INT /* important */ NOT NULL\n)';
+    const result = formatSQL(sql);
+    expect(result).toContain('/* important */');
+  });
+
+  it('preserves comment on ALTER TABLE action tokens', () => {
+    const sql = 'ALTER TABLE t1 ADD /* new column */ col1 INT';
+    const result = formatSQL(sql);
+    expect(result).toContain('/* new column */');
+  });
+
+  it('preserves comment before BETWEEN keyword', () => {
+    const sql = 'SELECT a FROM t WHERE a /* range */ BETWEEN 1 AND 10';
+    const result = formatSQL(sql);
+    expect(result).toContain('/* range */');
+  });
+
+  it('preserves comment before EXISTS keyword', () => {
+    const sql = 'SELECT a FROM t WHERE /* check */ EXISTS (SELECT 1 FROM t2)';
+    const result = formatSQL(sql);
+    expect(result).toContain('/* check */');
+  });
+
+  it('preserves trailing inline comment on identifier tokens', () => {
+    const sql = 'SELECT a -- col a\nFROM t';
+    const result = formatSQL(sql);
+    expect(result).toContain('-- col a');
+  });
+
+  it('does not duplicate comments that are handled explicitly', () => {
+    const sql = '-- leading comment\nSELECT a FROM t';
+    const result = formatSQL(sql);
+    const count = result.split('-- leading comment').length - 1;
+    expect(count).toBe(1);
+  });
 });
