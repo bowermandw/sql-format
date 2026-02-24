@@ -606,11 +606,18 @@ class Formatter {
       } else if (t.type === TokenType.Comma) {
         parts.push(',');
       } else if (t.type === TokenType.Word || t.type === TokenType.QuotedIdentifier) {
-        const category = t.type === TokenType.QuotedIdentifier ? 'identifier' : categorizeWord(t.value);
-        if (category === 'identifier') {
-          parts.push(this.formatIdentifierPart(t));
+        // Collation names after COLLATE should never be bracketed
+        const prevToken = i > 0 ? node.tokens[i - 1] : undefined;
+        const afterCollate = prevToken?.type === TokenType.Word && prevToken.value.toUpperCase() === 'COLLATE';
+        if (afterCollate) {
+          parts.push(this.tokenValue(t));
         } else {
-          parts.push(this.kw(t.value));
+          const category = t.type === TokenType.QuotedIdentifier ? 'identifier' : categorizeWord(t.value);
+          if (category === 'identifier') {
+            parts.push(this.formatIdentifierPart(t));
+          } else {
+            parts.push(this.kw(t.value));
+          }
         }
       } else {
         parts.push(t.value);

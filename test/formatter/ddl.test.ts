@@ -284,6 +284,14 @@ describe('COLLATE in column definitions', () => {
     });
     expect(result).toContain('COLLATE Latin1_General_CI_AS');
   });
+
+  it('does not bracket collation name when encloseIdentifiers is withBrackets', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (col VARCHAR(50) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL)', {
+      identifiers: { encloseIdentifiers: 'withBrackets' },
+    });
+    expect(result).toContain('COLLATE SQL_Latin1_General_CP1_CI_AS');
+    expect(result).not.toContain('[SQL_Latin1_General_CP1_CI_AS]');
+  });
 });
 
 // ---- Comments in column definitions ----
