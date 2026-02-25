@@ -1572,4 +1572,10 @@ describe('USE statement', () => {
     expect(result).toContain('col2, -- c2');
     expect(result).toContain('col3 -- c3');
   });
+
+  it('preserves trailing comment after semicolon at end of file', () => {
+    const sql = 'SELECT @a; -- last comment';
+    const result = formatSQL(sql);
+    expect(result).toContain('-- last comment');
+  });
 });

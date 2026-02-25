@@ -48,22 +48,30 @@ class Parser {
    */
   /** Transfer leading/trailing comments from a skipped token to the next token */
   private transferComments(skipped: Token): void {
-    if (!this.isEOF()) {
-      const next = this.current();
-      if (skipped.leadingComments?.length) {
+    const next = this.current();
+    if (skipped.leadingComments?.length) {
+      if (this.isEOF()) {
+        // At EOF, attach as trailingComments so the formatter emits them
+        if (!next.trailingComments) next.trailingComments = [];
+        next.trailingComments.push(...skipped.leadingComments);
+      } else {
         if (!next.leadingComments) next.leadingComments = [];
         next.leadingComments.unshift(...skipped.leadingComments);
-        // Preserve blank line info
         if (skipped.leadingComments[0].precedingBlankLine) {
           next.precedingBlankLine = true;
         }
-        skipped.leadingComments = undefined;
       }
-      if (skipped.trailingComment) {
+      skipped.leadingComments = undefined;
+    }
+    if (skipped.trailingComment) {
+      if (this.isEOF()) {
+        if (!next.trailingComments) next.trailingComments = [];
+        next.trailingComments.push(skipped.trailingComment);
+      } else {
         if (!next.leadingComments) next.leadingComments = [];
         next.leadingComments.push(skipped.trailingComment);
-        skipped.trailingComment = undefined;
       }
+      skipped.trailingComment = undefined;
     }
   }
 
