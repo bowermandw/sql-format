@@ -1541,4 +1541,12 @@ describe('USE statement', () => {
     const result = formatSQL(sql);
     expect(result).toContain('-- col3 BIT NOT NULL');
   });
+
+  it('does not duplicate trailing comment on ORDER BY column', () => {
+    const sql = "SELECT * FROM dbo.t WHERE a = 'x' ORDER BY b -- trailing comment";
+    const result = formatSQL(sql);
+    expect(result).toContain('-- trailing comment');
+    const count = result.split('-- trailing comment').length - 1;
+    expect(count).toBe(1);
+  });
 });

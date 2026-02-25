@@ -332,7 +332,7 @@ class Formatter {
   /** Get the trailing inline comment from the last token of a node (if any). */
   private getTrailingComment(node: SqlNode): string {
     const token = this.getLastToken(node);
-    if (token?.trailingComment) {
+    if (token?.trailingComment && !this.emittedComments.has(token.trailingComment)) {
       this.emittedComments.add(token.trailingComment);
       return ' ' + token.trailingComment.value;
     }
@@ -1532,12 +1532,12 @@ class Formatter {
   // --- ORDER BY ---
 
   formatOrderBy(node: OrderByNode, baseIndent?: number, inline?: boolean): string {
-    const items = node.items.map(i => {
-      let s = this.formatNode(i.expr);
-      if (i.direction) s += ' ' + this.kw(i.direction.value);
-      return s;
-    });
     if (inline) {
+      const items = node.items.map(i => {
+        let s = this.formatNode(i.expr);
+        if (i.direction) s += ' ' + this.kw(i.direction.value);
+        return s;
+      });
       let s = this.kw('ORDER') + ' ' + this.kw('BY') + ' ' + items.join(', ');
       if (node.offset) {
         s += ' ' + this.kw('OFFSET') + ' ' + this.formatNode(node.offset.value) + ' ' + this.kw(node.offset.rowsToken.value);
@@ -1556,8 +1556,10 @@ class Formatter {
     for (let i = 0; i < node.items.length; i++) {
       const comments = this.formatLeadingComments(node.items[i].expr);
       if (comments) lines.push(comments.replace(/\n$/, ''));
+      let item = this.formatNode(node.items[i].expr);
+      if (node.items[i].direction) item += ' ' + this.kw(node.items[i].direction!.value);
       const comma = i < node.items.length - 1 ? ',' : '';
-      lines.push(clauseIndent + items[i] + comma);
+      lines.push(clauseIndent + item + comma);
     }
     this.indent = savedIndent;
     if (node.offset) {
