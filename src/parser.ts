@@ -158,7 +158,12 @@ class Parser {
           (currentStatements[currentStatements.length - 1] as any)._hasSemicolon = true;
         }
         const semi = this.advance();
-        // Transfer comments from semicolon to next token so they aren't lost
+        // Trailing comment on semicolon (same line) belongs with the preceding statement
+        if (semi.trailingComment && currentStatements.length > 0) {
+          (currentStatements[currentStatements.length - 1] as any)._semicolonTrailingComment = semi.trailingComment;
+          semi.trailingComment = undefined;
+        }
+        // Transfer any remaining comments (leading) to next token so they aren't lost
         this.transferComments(semi);
         continue;
       }

@@ -366,10 +366,17 @@ class Formatter {
     const comments = this.formatLeadingComments(node);
     const formatted = this.formatNode(node);
     const trailing = this.getTrailingComment(node);
-    if (this.isLeafStatement(node)) {
-      return comments + this.withSemicolon(formatted, node) + trailing;
+    // Emit trailing comment from the semicolon (same line as last token)
+    let semiComment = '';
+    const semiTrailing = (node as any)._semicolonTrailingComment as Token | undefined;
+    if (semiTrailing && !this.emittedComments.has(semiTrailing)) {
+      this.emittedComments.add(semiTrailing);
+      semiComment = ' ' + semiTrailing.value;
     }
-    return comments + formatted + trailing;
+    if (this.isLeafStatement(node)) {
+      return comments + this.withSemicolon(formatted, node) + trailing + semiComment;
+    }
+    return comments + formatted + trailing + semiComment;
   }
 
   // --- Batch ---
