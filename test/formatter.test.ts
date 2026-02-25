@@ -1578,4 +1578,10 @@ describe('USE statement', () => {
     const result = formatSQL(sql);
     expect(result).toContain('-- last comment');
   });
+
+  it('preserves semicolon trailing comment inside BEGIN...END', () => {
+    const sql = 'BEGIN\n    SELECT @a; -- comment\n    SELECT @b;\nEND';
+    const result = formatSQL(sql);
+    expect(result).toContain('; -- comment');
+  });
 });

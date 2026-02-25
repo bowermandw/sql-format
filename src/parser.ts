@@ -1165,7 +1165,12 @@ class Parser {
         if (statements.length > 0) {
           (statements[statements.length - 1] as any)._hasSemicolon = true;
         }
-        this.advance();
+        const semi = this.advance();
+        if (semi.trailingComment && statements.length > 0) {
+          (statements[statements.length - 1] as any)._semicolonTrailingComment = semi.trailingComment;
+          semi.trailingComment = undefined;
+        }
+        this.transferComments(semi);
         continue;
       }
       const stmt = this.parseStatement();
@@ -1213,7 +1218,12 @@ class Parser {
         if (statements.length > 0) {
           (statements[statements.length - 1] as any)._hasSemicolon = true;
         }
-        this.advance();
+        const semi = this.advance();
+        if (semi.trailingComment && statements.length > 0) {
+          (statements[statements.length - 1] as any)._semicolonTrailingComment = semi.trailingComment;
+          semi.trailingComment = undefined;
+        }
+        this.transferComments(semi);
         continue;
       }
       const stmt = this.parseStatement();
