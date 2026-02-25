@@ -815,62 +815,123 @@ class Formatter {
     }
 
     this.indent = baseIndent + 1;
+    // Save emittedComments so formatSelectItem doesn't auto-emit trailing comments
+    // (we handle them via the alignment system below)
+    const savedForCols = this.saveEmittedComments();
     const cols = node.columns.map(c => this.formatSelectItem(c, aliasAlignWidth, true));
+    // Capture which trailing comments were auto-emitted during formatSelectItem
+    const autoEmitted = this.emittedComments;
+    this.emittedComments = savedForCols;
+    // Now re-format columns, but this time the auto-emit will produce the same strings
+    // Actually, let's just strip auto-emitted trailing comments from cols and handle them separately
+    // Collect trailing comment tokens for each column
+    const trailingCommentTokens: (Token | undefined)[] = node.columns.map(c => {
+      const token = this.getLastToken(c);
+      return token?.trailingComment && autoEmitted.has(token.trailingComment) ? token.trailingComment : undefined;
+    });
+    // Strip auto-emitted trailing comments from cols strings
+    const colsClean = cols.map((s, i) => {
+      const tc = trailingCommentTokens[i];
+      if (tc && s.endsWith(' ' + tc.value)) {
+        return s.slice(0, -(tc.value.length + 1));
+      }
+      return s;
+    });
     // Collect leading comments for each column (e.g. commented-out columns)
     const colComments = node.columns.map(c => this.formatLeadingComments(c));
-    // Collect comma comments (trailing comment on the comma before each item)
-    const commaComments = node.columns.map(c => this.getCommaComment(c));
+    // Collect raw comma comment tokens (trailing comment on the comma before each item)
+    const commaCommentTokens: (Token | undefined)[] = node.columns.map(c => {
+      const token = this.getFirstToken(c);
+      if (token?._commaComment && !this.emittedComments.has(token._commaComment)) {
+        return token._commaComment;
+      }
+      return undefined;
+    });
+
     this.indent = baseIndent;
 
     const leadingCommas = this.config.lists.commas.placeCommasBeforeItems;
-    // Helper: append comma + comma-trailing-comment to a line
-    const commaStr = (nextIdx: number) => ',' + (commaComments[nextIdx] || '');
 
-    if (firstOnNewLine === 'always' || (firstOnNewLine === 'onlyIfSubsequentItems' && cols.length > 1)) {
+    // Build per-column inline comment: for item i, the comment to show after
+    // its comma comes from commaCommentTokens[i+1]; for the last item, use trailingCommentTokens
+    const inlineComments: (Token | undefined)[] = node.columns.map((_, i) => {
+      if (i < node.columns.length - 1) return commaCommentTokens[i + 1];
+      return trailingCommentTokens[i];
+    });
+
+    // Compute comment alignment width
+    let commentAlignWidth = 0;
+    if (this.config.lists.alignComments) {
+      for (let i = 0; i < colsClean.length; i++) {
+        if (!inlineComments[i]) continue;
+        const comma = (!leadingCommas && i < colsClean.length - 1) ? ',' : '';
+        const contentLen = colsClean[i].length + comma.length;
+        if (contentLen > commentAlignWidth) commentAlignWidth = contentLen;
+      }
+    }
+
+    // Helper: format a column line with aligned comment
+    const colWithComment = (colStr: string, comma: string, commentToken: Token | undefined): string => {
+      let line = colStr + comma;
+      if (commentToken) {
+        this.emittedComments.add(commentToken);
+        if (this.config.lists.alignComments && commentAlignWidth > 0) {
+          const contentLen = colStr.length + comma.length;
+          const pad = commentAlignWidth - contentLen;
+          if (pad > 0) line += ' '.repeat(pad);
+        }
+        line += ' ' + commentToken.value;
+      }
+      return line;
+    };
+
+    if (firstOnNewLine === 'always' || (firstOnNewLine === 'onlyIfSubsequentItems' && colsClean.length > 1)) {
       lines.push(selectLine);
-      for (let i = 0; i < cols.length; i++) {
+      for (let i = 0; i < colsClean.length; i++) {
         if (colComments[i]) lines.push(colComments[i].replace(/\n$/, ''));
         if (leadingCommas && i > 0) {
-          lines.push(clauseIndent.slice(0, -1) + ',' + cols[i]);
+          lines.push(clauseIndent.slice(0, -1) + ',' + colsClean[i]);
         } else {
-          lines.push(clauseIndent + cols[i] + (!leadingCommas && i < cols.length - 1 ? commaStr(i + 1) : ''));
+          const comma = (!leadingCommas && i < colsClean.length - 1) ? ',' : '';
+          lines.push(clauseIndent + colWithComment(colsClean[i], comma, inlineComments[i]));
         }
       }
     } else {
       // First item on same line as SELECT
-      if (cols.length === 1) {
+      if (colsClean.length === 1) {
         if (colComments[0]) {
           // Comment between SELECT and single column — expand to separate lines
           lines.push(selectLine);
           lines.push(colComments[0].replace(/\n$/, ''));
-          lines.push(clauseIndent + cols[0]);
+          lines.push(clauseIndent + colWithComment(colsClean[0], '', inlineComments[0]));
         } else {
-          lines.push(selectLine + ' ' + cols[0]);
+          lines.push(selectLine + ' ' + colWithComment(colsClean[0], '', inlineComments[0]));
         }
       } else {
         if (leadingCommas) {
           if (colComments[0]) {
             lines.push(selectLine);
             lines.push(colComments[0].replace(/\n$/, ''));
-            lines.push(clauseIndent + ' ' + cols[0]);
+            lines.push(clauseIndent + ' ' + colsClean[0]);
           } else {
-            lines.push(selectLine + ' ' + cols[0]);
+            lines.push(selectLine + ' ' + colsClean[0]);
           }
-          for (let i = 1; i < cols.length; i++) {
+          for (let i = 1; i < colsClean.length; i++) {
             if (colComments[i]) lines.push(colComments[i].replace(/\n$/, ''));
-            lines.push(clauseIndent.slice(0, -1) + ',' + cols[i]);
+            lines.push(clauseIndent.slice(0, -1) + ',' + colsClean[i]);
           }
         } else {
           if (colComments[0]) {
             lines.push(selectLine);
             lines.push(colComments[0].replace(/\n$/, ''));
-            lines.push(clauseIndent + cols[0] + commaStr(1));
+            lines.push(clauseIndent + colWithComment(colsClean[0], ',', inlineComments[0]));
           } else {
-            lines.push(selectLine + ' ' + cols[0] + commaStr(1));
+            lines.push(selectLine + ' ' + colWithComment(colsClean[0], ',', inlineComments[0]));
           }
-          for (let i = 1; i < cols.length; i++) {
+          for (let i = 1; i < colsClean.length; i++) {
             if (colComments[i]) lines.push(colComments[i].replace(/\n$/, ''));
-            lines.push(clauseIndent + cols[i] + (i < cols.length - 1 ? commaStr(i + 1) : ''));
+            const comma = i < colsClean.length - 1 ? ',' : '';
+            lines.push(clauseIndent + colWithComment(colsClean[i], comma, inlineComments[i]));
           }
         }
       }
