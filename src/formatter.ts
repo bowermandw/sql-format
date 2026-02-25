@@ -514,12 +514,14 @@ class Formatter {
     const colIndent = this.indentStr(this.indent + 1);
     let nameWidth = 0;
     if (this.config.ddl.alignDataTypesAndConstraints && node.columns.length > 1) {
+      const saved = this.saveEmittedComments();
       nameWidth = Math.max(...node.columns.map(c => {
         if (c.type === 'columnDef') {
           return this.formatIdentifierPart((c as ColumnDefNode).name).length;
         }
         return 0;
       }));
+      this.restoreEmittedComments(saved);
     }
     const colStrs = node.columns.map(c => {
       const token = c.type === 'columnDef' ? (c as ColumnDefNode).name : (c as ConstraintNode).tokens[0];
@@ -1946,12 +1948,14 @@ class Formatter {
         const colIndent = this.indentStr(this.indent + 1);
         let colNameWidth = 0;
         if (this.config.ddl.alignDataTypesAndConstraints && v.tableColumns.length > 1) {
+          const saved = this.saveEmittedComments();
           colNameWidth = Math.max(...v.tableColumns.map(c => {
             if (c.type === 'columnDef') {
               return this.formatIdentifierPart((c as ColumnDefNode).name).length;
             }
             return 0;
           }));
+          this.restoreEmittedComments(saved);
         }
         const colStrs = v.tableColumns.map(c => {
           const token = c.type === 'columnDef' ? (c as ColumnDefNode).name : (c as ConstraintNode).tokens[0];
