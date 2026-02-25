@@ -40,6 +40,44 @@ class Parser {
     return tok;
   }
 
+  /**
+   * Consume a comma token and transfer any trailing comment from it
+   * to the next token as a leading comment. This prevents losing
+   * inline comments that appear after commas in lists (e.g.,
+   * `SELECT a, -- comment\n  b`).
+   */
+  /** Transfer leading/trailing comments from a skipped token to the next token */
+  private transferComments(skipped: Token): void {
+    if (!this.isEOF()) {
+      const next = this.current();
+      if (skipped.leadingComments?.length) {
+        if (!next.leadingComments) next.leadingComments = [];
+        next.leadingComments.unshift(...skipped.leadingComments);
+        // Preserve blank line info
+        if (skipped.leadingComments[0].precedingBlankLine) {
+          next.precedingBlankLine = true;
+        }
+        skipped.leadingComments = undefined;
+      }
+      if (skipped.trailingComment) {
+        if (!next.leadingComments) next.leadingComments = [];
+        next.leadingComments.push(skipped.trailingComment);
+        skipped.trailingComment = undefined;
+      }
+    }
+  }
+
+  private advanceComma(): Token {
+    const comma = this.advance();
+    if (comma.trailingComment) {
+      const next = this.current();
+      if (!next.leadingComments) next.leadingComments = [];
+      next.leadingComments.push(comma.trailingComment);
+      comma.trailingComment = undefined;
+    }
+    return comma;
+  }
+
   private isEOF(): boolean {
     return this.current().type === TokenType.EOF;
   }
@@ -112,7 +150,9 @@ class Parser {
         if (currentStatements.length > 0) {
           (currentStatements[currentStatements.length - 1] as any)._hasSemicolon = true;
         }
-        this.advance();
+        const semi = this.advance();
+        // Transfer comments from semicolon to next token so they aren't lost
+        this.transferComments(semi);
         continue;
       }
 
@@ -147,7 +187,9 @@ class Parser {
 
     // Skip stray semicolons
     if (this.isType(TokenType.Semicolon)) {
-      this.advance();
+      const semi = this.advance();
+      // Transfer comments from semicolon to next token so they aren't lost
+      this.transferComments(semi);
       return null;
     }
 
@@ -291,7 +333,7 @@ class Parser {
     if (hasParen) this.advance(); // skip (
 
     while (!this.isEOF() && !this.isWord('AS') && !(hasParen && this.isType(TokenType.RightParen))) {
-      if (this.isType(TokenType.Comma)) { this.advance(); continue; }
+      if (this.isType(TokenType.Comma)) { this.advanceComma(); continue; }
       if (this.current().type === TokenType.Word && this.current().value.startsWith('@')) {
         const param = this.parseProcParameter();
         parameters.push(param);
@@ -346,7 +388,7 @@ class Parser {
       const innerTokens: SqlNode[] = [];
       this.advance(); // (
       while (!this.isEOF() && !this.isType(TokenType.RightParen)) {
-        if (this.isType(TokenType.Comma)) { this.advance(); continue; }
+        if (this.isType(TokenType.Comma)) { this.advanceComma(); continue; }
         innerTokens.push({ type: 'rawToken', token: this.advance() });
       }
       if (this.isType(TokenType.RightParen)) this.advance(); // )
@@ -372,7 +414,7 @@ class Parser {
     if (this.isType(TokenType.LeftParen)) {
       this.advance(); // (
       while (!this.isEOF() && !this.isType(TokenType.RightParen)) {
-        if (this.isType(TokenType.Comma)) { this.advance(); continue; }
+        if (this.isType(TokenType.Comma)) { this.advanceComma(); continue; }
         // Constraint or column def
         if (this.isWord('CONSTRAINT') || this.isWord('PRIMARY') || this.isWord('FOREIGN') ||
             this.isWord('UNIQUE') || this.isWord('CHECK')) {
@@ -632,7 +674,7 @@ class Parser {
     columns.push(this.parseSelectItem());
 
     while (this.isType(TokenType.Comma)) {
-      this.advance(); // comma
+      this.advanceComma();
       columns.push(this.parseSelectItem());
     }
 
@@ -792,7 +834,7 @@ class Parser {
         if (!this.isType(TokenType.RightParen)) {
           args.push(this.parseExpression());
           while (this.isType(TokenType.Comma)) {
-            this.advance();
+            this.advanceComma();
             args.push(this.parseExpression());
           }
         }
@@ -875,7 +917,7 @@ class Parser {
     const items: SqlNode[] = [];
     items.push(this.parseExpression());
     while (this.isType(TokenType.Comma)) {
-      this.advance();
+      this.advanceComma();
       items.push(this.parseExpression());
     }
     return { type: 'groupBy', tokens, items };
@@ -896,7 +938,7 @@ class Parser {
 
     parseItem();
     while (this.isType(TokenType.Comma)) {
-      this.advance();
+      this.advanceComma();
       parseItem();
     }
 
@@ -944,7 +986,7 @@ class Parser {
       columns = [];
       columns.push(this.parseQualifiedName());
       while (this.isType(TokenType.Comma)) {
-        this.advance();
+        this.advanceComma();
         columns.push(this.parseQualifiedName());
       }
       if (this.isType(TokenType.RightParen)) this.advance();
@@ -980,7 +1022,7 @@ class Parser {
           if (this.isType(TokenType.RightParen)) this.advance();
           rows.push({ openParen, values: row });
         }
-      } while (this.isType(TokenType.Comma) && this.advance());
+      } while (this.isType(TokenType.Comma) && this.advanceComma());
       values = { token: valToken, rows };
     } else if (this.isWord('SELECT')) {
       select = this.parseSelect();
@@ -1009,7 +1051,7 @@ class Parser {
 
     parseAssignment();
     while (this.isType(TokenType.Comma)) {
-      this.advance();
+      this.advanceComma();
       parseAssignment();
     }
 
@@ -1060,7 +1102,7 @@ class Parser {
         this.advance();
         columns = [];
         while (!this.isEOF() && !this.isType(TokenType.RightParen)) {
-          if (this.isType(TokenType.Comma)) { this.advance(); continue; }
+          if (this.isType(TokenType.Comma)) { this.advanceComma(); continue; }
           columns.push(this.advance());
         }
         if (this.isType(TokenType.RightParen)) this.advance();
@@ -1079,7 +1121,7 @@ class Parser {
 
     parseSingleCTE();
     while (this.isType(TokenType.Comma)) {
-      this.advance();
+      this.advanceComma();
       parseSingleCTE();
     }
 
@@ -1219,7 +1261,7 @@ class Parser {
         const tableColumns: any[] = [];
         this.advance(); // (
         while (!this.isEOF() && !this.isType(TokenType.RightParen)) {
-          if (this.isType(TokenType.Comma)) { this.advance(); continue; }
+          if (this.isType(TokenType.Comma)) { this.advanceComma(); continue; }
           if (this.isWord('CONSTRAINT') || this.isWord('PRIMARY') || this.isWord('FOREIGN') ||
               this.isWord('UNIQUE') || this.isWord('CHECK')) {
             tableColumns.push(this.parseTableConstraint());
@@ -1242,7 +1284,7 @@ class Parser {
 
     parseVar();
     while (this.isType(TokenType.Comma)) {
-      this.advance();
+      this.advanceComma();
       parseVar();
     }
 
@@ -1351,11 +1393,11 @@ class Parser {
     let message: SqlNode | undefined;
     let state: SqlNode | undefined;
     if (this.isType(TokenType.Comma)) {
-      this.advance(); // consume comma
+      this.advanceComma();
       message = this.parseExpression();
     }
     if (this.isType(TokenType.Comma)) {
-      this.advance(); // consume comma
+      this.advanceComma();
       state = this.parseExpression();
     }
     return { type: 'throw', token, errorNumber, message, state };
@@ -1371,7 +1413,7 @@ class Parser {
       while (!this.isEOF() && !this.isType(TokenType.RightParen)) {
         args.push(this.parseExpression());
         if (this.isType(TokenType.Comma)) {
-          this.advance(); // consume comma
+          this.advanceComma();
         }
       }
       if (this.isType(TokenType.RightParen)) {
@@ -1532,7 +1574,7 @@ class Parser {
         } else {
           values.push(this.parseExpression());
           while (this.isType(TokenType.Comma)) {
-            this.advance();
+            this.advanceComma();
             values.push(this.parseExpression());
           }
         }
@@ -1677,7 +1719,7 @@ class Parser {
       const inner: SqlNode[] = [];
       inner.push(this.parseExpression());
       while (this.isType(TokenType.Comma)) {
-        this.advance();
+        this.advanceComma();
         inner.push(this.parseExpression());
       }
       let closeComments: Token[] | undefined;
@@ -1741,7 +1783,7 @@ class Parser {
           }
           args.push(this.parseExpression());
           while (this.isType(TokenType.Comma)) {
-            this.advance();
+            this.advanceComma();
             args.push(this.parseExpression());
           }
           // CAST/TRY_CAST/PARSE/TRY_PARSE/TRY_CONVERT: consume AS <datatype>
@@ -1804,7 +1846,7 @@ class Parser {
         // Parse the expression list
         inner.push(this.parseExpression());
         while (this.isType(TokenType.Comma)) {
-          this.advance();
+          this.advanceComma();
           inner.push(this.parseExpression());
         }
       } else if (this.isWord('ROWS') || this.isWord('RANGE') || this.isWord('GROUPS')) {
@@ -1877,7 +1919,7 @@ class Parser {
     const items: SqlNode[] = [];
     items.push(this.parseExpression());
     while (this.isType(TokenType.Comma)) {
-      this.advance();
+      this.advanceComma();
       items.push(this.parseExpression());
     }
     return items;

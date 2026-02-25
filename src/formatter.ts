@@ -21,6 +21,16 @@ class Formatter {
   private tabStr: string;
   private emittedComments = new Set<Token>();
 
+  /** Save the current emittedComments state for rollback if a collapse attempt fails. */
+  private saveEmittedComments(): Set<Token> {
+    return new Set(this.emittedComments);
+  }
+
+  /** Restore emittedComments to a previously saved state (rollback). */
+  private restoreEmittedComments(saved: Set<Token>): void {
+    this.emittedComments = saved;
+  }
+
   constructor(config: FormatConfig) {
     this.config = config;
     this.tabStr = config.whitespace.tabBehavior === 'onlyTabs'
@@ -277,12 +287,14 @@ class Formatter {
     const preserve = this.config.whitespace.newLines.preserveExistingEmptyLinesBetweenComments;
     const lines: string[] = [];
     for (const c of allComments) {
+      if (this.emittedComments.has(c)) continue;
       this.emittedComments.add(c);
       if (preserve && c.precedingBlankLine && lines.length > 0) {
         lines.push('');
       }
       lines.push(indent + c.value);
     }
+    if (!lines.length) return '';
     if (preserve && token?.blankLineAfterLeadingComments) {
       lines.push('');
     }
@@ -296,12 +308,14 @@ class Formatter {
     const preserve = this.config.whitespace.newLines.preserveExistingEmptyLinesBetweenComments;
     const lines: string[] = [];
     for (const c of token.leadingComments) {
+      if (this.emittedComments.has(c)) continue;
       this.emittedComments.add(c);
       if (preserve && c.precedingBlankLine && lines.length > 0) {
         lines.push('');
       }
       lines.push(indent + c.value);
     }
+    if (!lines.length) return '';
     if (preserve && token.blankLineAfterLeadingComments) {
       lines.push('');
     }
@@ -485,16 +499,14 @@ class Formatter {
     const kw = node.keywords.map(t => this.kw(t.value)).join(' ');
     const name = this.formatNode(node.name);
 
-    // Try collapse (skip if any column has leading comments)
-    const hasColumnComments = node.columns.some(c => {
-      const token = c.type === 'columnDef' ? (c as ColumnDefNode).name : (c as ConstraintNode).tokens[0];
-      return token?.leadingComments?.length;
-    });
-    if (this.config.ddl.collapseShortStatements && !hasColumnComments) {
+    // Try collapse (skip if any node has comments that would be lost)
+    if (this.config.ddl.collapseShortStatements && !this.nodeHasComments(node)) {
+      const saved = this.saveEmittedComments();
       const collapsed = this.collapseCreateTable(node, kw, name);
       if (collapsed.length <= this.config.ddl.collapseStatementsShorterThan) {
         return baseIndent + collapsed;
       }
+      this.restoreEmittedComments(saved);
     }
 
     const parts: string[] = [`${baseIndent}${kw} ${name}`];
@@ -685,11 +697,13 @@ class Formatter {
     const clauseIndent = this.indentStr(baseIndent + 1);
 
     // Try collapse (skip if any clause tokens have leading comments)
-    if (this.config.dml.collapseShortStatements && !this.selectHasClauseComments(node)) {
+    if (this.config.dml.collapseShortStatements && !this.nodeHasComments(node)) {
+      const saved = this.saveEmittedComments();
       const collapsed = this.collapseSelect(node);
       if (collapsed.length <= this.config.dml.collapseStatementsShorterThan) {
         return indent + collapsed;
       }
+      this.restoreEmittedComments(saved);
     }
 
     // SELECT keyword
@@ -901,69 +915,258 @@ class Formatter {
     return lines.join('\n');
   }
 
-  /** Check if any clause token in a SELECT has leading comments that must be preserved. */
-  private selectHasClauseComments(node: SelectNode): boolean {
-    if (node.from?.token?.leadingComments?.length) return true;
-    // Check FROM source and joins
-    if (node.from) {
-      const sourceToken = this.getFirstToken(node.from.source);
-      if (sourceToken?.leadingComments?.length) return true;
-      for (const j of node.from.joins) {
-        const joinToken = this.getFirstToken(j);
-        if (joinToken?.leadingComments?.length) return true;
+  /** Check if a token has any comments (leading or trailing). */
+  private tokenHasComments(token: Token | undefined): boolean {
+    if (!token) return false;
+    return !!(token.leadingComments?.length || token.trailingComment || token.trailingComments?.length);
+  }
+
+  /**
+   * Recursively check if any token in an AST node subtree has comments.
+   * Used to prevent collapsing nodes that contain comments, which would
+   * either lose them or misplace them (especially line comments).
+   */
+  private nodeHasComments(node: SqlNode): boolean {
+    switch (node.type) {
+      case 'select': {
+        // Leading comments on selectToken are handled by formatStatement/formatLeadingComments,
+        // so only check trailing comment here (leading comments don't prevent collapsing)
+        if (node.selectToken.trailingComment) return true;
+        if (node.distinct && this.tokenHasComments(node.distinct)) return true;
+        if (node.top && (this.tokenHasComments(node.top.token) || this.nodeHasComments(node.top.value))) return true;
+        for (const col of node.columns) {
+          if (this.nodeHasComments(col)) return true;
+          const exprNode = (col as any)._expression;
+          if (exprNode?._parenLeadingComments?.length) return true;
+        }
+        if (node.into && (this.tokenHasComments(node.into.token) || this.nodeHasComments(node.into.target))) return true;
+        if (node.from) {
+          if (this.tokenHasComments(node.from.token)) return true;
+          if (this.nodeHasComments(node.from.source)) return true;
+          for (const j of node.from.joins) {
+            if (this.nodeHasComments(j)) return true;
+          }
+        }
+        if (node.where && (this.tokenHasComments(node.where.token) || this.nodeHasComments(node.where.condition))) return true;
+        if (node.groupBy) {
+          for (const t of node.groupBy.tokens) if (this.tokenHasComments(t)) return true;
+          for (const item of node.groupBy.items) if (this.nodeHasComments(item)) return true;
+        }
+        if (node.having && (this.tokenHasComments(node.having.token) || this.nodeHasComments(node.having.condition))) return true;
+        if (node.orderBy) {
+          for (const t of node.orderBy.tokens) if (this.tokenHasComments(t)) return true;
+          for (const item of node.orderBy.items) {
+            if (this.nodeHasComments(item.expr)) return true;
+            if (item.direction && this.tokenHasComments(item.direction)) return true;
+          }
+          if (node.orderBy.offset) {
+            if (this.tokenHasComments(node.orderBy.offset.keyword)) return true;
+            if (this.nodeHasComments(node.orderBy.offset.value)) return true;
+            if (this.tokenHasComments(node.orderBy.offset.rowsToken)) return true;
+          }
+          if (node.orderBy.fetch) {
+            if (this.tokenHasComments(node.orderBy.fetch.fetchToken)) return true;
+            if (this.tokenHasComments(node.orderBy.fetch.nextToken)) return true;
+            if (this.nodeHasComments(node.orderBy.fetch.value)) return true;
+            if (this.tokenHasComments(node.orderBy.fetch.rowsToken)) return true;
+          }
+        }
+        if (node.union) {
+          if (this.tokenHasComments(node.union.token)) return true;
+          if (node.union.all && this.tokenHasComments(node.union.all)) return true;
+          if (this.nodeHasComments(node.union.select)) return true;
+        }
+        return false;
       }
-    }
-    if (node.where?.token?.leadingComments?.length) return true;
-    // Check WHERE condition
-    if (node.where) {
-      const condToken = this.getFirstToken(node.where.condition);
-      if (condToken?.leadingComments?.length) return true;
-    }
-    if (node.groupBy?.tokens[0]?.leadingComments?.length) return true;
-    // Check GROUP BY items
-    if (node.groupBy) {
-      for (const item of node.groupBy.items) {
-        const t = this.getFirstToken(item);
-        if (t?.leadingComments?.length) return true;
+      case 'insert': {
+        if (node.insertToken.trailingComment) return true;
+        if (node.intoToken && this.tokenHasComments(node.intoToken)) return true;
+        if (this.nodeHasComments(node.target)) return true;
+        if (node.columns) {
+          for (const col of node.columns) if (this.nodeHasComments(col)) return true;
+        }
+        if (node.values) {
+          if (this.tokenHasComments(node.values.token)) return true;
+          for (const row of node.values.rows) {
+            if (this.tokenHasComments(row.openParen)) return true;
+            for (const v of row.values) if (this.nodeHasComments(v)) return true;
+          }
+        }
+        if (node.select && this.nodeHasComments(node.select)) return true;
+        if (node.exec && this.nodeHasComments(node.exec)) return true;
+        return false;
       }
-    }
-    if (node.having?.token?.leadingComments?.length) return true;
-    // Check HAVING condition
-    if (node.having) {
-      const condToken = this.getFirstToken(node.having.condition);
-      if (condToken?.leadingComments?.length) return true;
-    }
-    if (node.orderBy?.tokens[0]?.leadingComments?.length) return true;
-    // Check ORDER BY items
-    if (node.orderBy) {
-      for (const item of node.orderBy.items) {
-        const t = this.getFirstToken(item.expr);
-        if (t?.leadingComments?.length) return true;
+      case 'update': {
+        if (node.updateToken.trailingComment) return true;
+        if (this.nodeHasComments(node.target)) return true;
+        if (this.tokenHasComments(node.setToken)) return true;
+        for (const a of node.assignments) {
+          if (this.nodeHasComments(a.column)) return true;
+          if (this.nodeHasComments(a.value)) return true;
+        }
+        if (node.from) {
+          if (this.tokenHasComments(node.from.token)) return true;
+          if (this.nodeHasComments(node.from.source)) return true;
+          for (const j of node.from.joins) if (this.nodeHasComments(j)) return true;
+        }
+        if (node.where && (this.tokenHasComments(node.where.token) || this.nodeHasComments(node.where.condition))) return true;
+        return false;
       }
-      if (node.orderBy.offset) {
-        const t = this.getFirstToken(node.orderBy.offset.value);
-        if (t?.leadingComments?.length) return true;
+      case 'delete': {
+        if (node.deleteToken.trailingComment) return true;
+        if (node.fromToken && this.tokenHasComments(node.fromToken)) return true;
+        if (this.nodeHasComments(node.target)) return true;
+        if (node.where && (this.tokenHasComments(node.where.token) || this.nodeHasComments(node.where.condition))) return true;
+        return false;
       }
-      if (node.orderBy.fetch) {
-        const t = this.getFirstToken(node.orderBy.fetch.value);
-        if (t?.leadingComments?.length) return true;
+      case 'join': {
+        for (const t of node.joinKeywords) if (this.tokenHasComments(t)) return true;
+        if (this.nodeHasComments(node.table)) return true;
+        if (node.on) {
+          if (this.tokenHasComments(node.on.token)) return true;
+          if (this.nodeHasComments(node.on.condition)) return true;
+        }
+        return false;
       }
+      case 'case': {
+        if (this.tokenHasComments(node.caseToken)) return true;
+        if (node.inputExpr && this.nodeHasComments(node.inputExpr)) return true;
+        for (const w of node.whenClauses) {
+          if (this.tokenHasComments(w.whenToken)) return true;
+          if (this.nodeHasComments(w.condition)) return true;
+          if (this.tokenHasComments(w.thenToken)) return true;
+          if (this.nodeHasComments(w.result)) return true;
+        }
+        if (node.elseClause) {
+          if (this.tokenHasComments(node.elseClause.elseToken)) return true;
+          if (this.nodeHasComments(node.elseClause.result)) return true;
+        }
+        if (this.tokenHasComments(node.endToken)) return true;
+        return false;
+      }
+      case 'ifElse': {
+        if (node.ifToken.trailingComment) return true;
+        if (this.nodeHasComments(node.condition)) return true;
+        if (this.nodeHasComments(node.thenStatement)) return true;
+        if (node.elseClause) {
+          if (this.tokenHasComments(node.elseClause.elseToken)) return true;
+          if (this.nodeHasComments(node.elseClause.statement)) return true;
+        }
+        return false;
+      }
+      case 'expression': {
+        if (this.nodeHasComments(node.left)) return true;
+        if (this.tokenHasComments(node.operator)) return true;
+        if (this.nodeHasComments(node.right)) return true;
+        return false;
+      }
+      case 'functionCall': {
+        if (this.nodeHasComments(node.name)) return true;
+        for (const arg of node.args) if (this.nodeHasComments(arg)) return true;
+        if (node.closeComments?.length) return true;
+        return false;
+      }
+      case 'identifier': {
+        for (const p of node.parts) if (this.tokenHasComments(p)) return true;
+        if ((node as any)._expression && this.nodeHasComments((node as any)._expression)) return true;
+        if ((node as any)._parenLeadingComments?.length) return true;
+        if (node.alias) {
+          if (node.alias.asToken && this.tokenHasComments(node.alias.asToken)) return true;
+          if (this.tokenHasComments(node.alias.name)) return true;
+        }
+        return false;
+      }
+      case 'literal': return this.tokenHasComments(node.token);
+      case 'rawToken': {
+        if (this.tokenHasComments(node.token)) return true;
+        if (node.extraTokens) {
+          for (const t of node.extraTokens) if (this.tokenHasComments(t)) return true;
+        }
+        return false;
+      }
+      case 'inExpression': {
+        if (this.nodeHasComments(node.expression)) return true;
+        if (node.notToken && this.tokenHasComments(node.notToken)) return true;
+        if (this.tokenHasComments(node.inToken)) return true;
+        for (const v of node.values) if (this.nodeHasComments(v)) return true;
+        return false;
+      }
+      case 'between': {
+        if (this.nodeHasComments(node.expression)) return true;
+        if (node.notToken && this.tokenHasComments(node.notToken)) return true;
+        if (this.tokenHasComments(node.betweenToken)) return true;
+        if (this.nodeHasComments(node.low)) return true;
+        if (this.tokenHasComments(node.andToken)) return true;
+        if (this.nodeHasComments(node.high)) return true;
+        return false;
+      }
+      case 'exists': {
+        if (node.notToken && this.tokenHasComments(node.notToken)) return true;
+        if (this.tokenHasComments(node.existsToken)) return true;
+        if (this.nodeHasComments(node.subquery)) return true;
+        return false;
+      }
+      case 'parenGroup': {
+        if (node.openParenComments?.length) return true;
+        for (const inner of node.inner) if (this.nodeHasComments(inner)) return true;
+        if (node.closeComments?.length) return true;
+        if (node.alias) {
+          if (node.alias.asToken && this.tokenHasComments(node.alias.asToken)) return true;
+          if (this.tokenHasComments(node.alias.name)) return true;
+        }
+        return false;
+      }
+      case 'createTable': {
+        for (const t of node.keywords) if (this.tokenHasComments(t)) return true;
+        if (this.nodeHasComments(node.name)) return true;
+        for (const col of node.columns) if (this.nodeHasComments(col)) return true;
+        if (node.onFilegroup) {
+          for (const t of node.onFilegroup) if (this.tokenHasComments(t)) return true;
+        }
+        return false;
+      }
+      case 'columnDef': {
+        if (this.tokenHasComments(node.name)) return true;
+        if (this.nodeHasComments(node.dataType)) return true;
+        for (const c of node.constraints) if (this.nodeHasComments(c)) return true;
+        return false;
+      }
+      case 'constraint': {
+        for (const t of node.tokens) if (this.tokenHasComments(t)) return true;
+        if (node.columns) {
+          for (const col of node.columns) if (this.nodeHasComments(col)) return true;
+        }
+        return false;
+      }
+      case 'set': {
+        if (this.tokenHasComments(node.token)) return true;
+        if (this.nodeHasComments(node.target)) return true;
+        if (this.nodeHasComments(node.value)) return true;
+        return false;
+      }
+      case 'declare': {
+        if (this.tokenHasComments(node.token)) return true;
+        for (const v of node.variables) {
+          if (this.tokenHasComments(v.name)) return true;
+          if (v.asToken && this.tokenHasComments(v.asToken)) return true;
+          if (this.nodeHasComments(v.dataType)) return true;
+          if (v.default && this.nodeHasComments(v.default)) return true;
+        }
+        return false;
+      }
+      case 'beginEnd': {
+        if (this.tokenHasComments(node.beginToken)) return true;
+        for (const s of node.statements) if (this.nodeHasComments(s)) return true;
+        if (this.tokenHasComments(node.endToken)) return true;
+        return false;
+      }
+      case 'print':
+        return this.tokenHasComments(node.token) || this.nodeHasComments(node.expression);
+      case 'return':
+        return this.tokenHasComments(node.token) || !!(node.expression && this.nodeHasComments(node.expression));
+      default:
+        return false;
     }
-    // Check for comments on columns (including before parenthesized expressions)
-    for (const col of node.columns) {
-      const firstToken = this.getFirstToken(col);
-      if (firstToken?.leadingComments?.length) return true;
-      const exprNode = (col as any)._expression;
-      if (exprNode?._parenLeadingComments?.length) return true;
-    }
-    // Check for comments on UNION and the second SELECT
-    if (node.union) {
-      if (node.union.token?.leadingComments?.length) return true;
-      if (node.union.select?.selectToken?.leadingComments?.length) return true;
-      // Recursively check the unioned SELECT
-      if (this.selectHasClauseComments(node.union.select)) return true;
-    }
-    return false;
   }
 
   private collapseSelect(node: SelectNode): string {
@@ -1379,12 +1582,14 @@ class Formatter {
     const indent = this.indentStr();
     const clauseIndent = this.indentStr(this.indent + 1);
 
-    // Try collapse
-    if (this.config.dml.collapseShortStatements) {
+    // Try collapse (skip if any node has comments)
+    if (this.config.dml.collapseShortStatements && !this.nodeHasComments(node)) {
+      const saved = this.saveEmittedComments();
       const collapsed = this.collapseInsert(node);
       if (collapsed !== null && collapsed.length <= this.config.dml.collapseStatementsShorterThan) {
         return indent + collapsed;
       }
+      this.restoreEmittedComments(saved);
     }
 
     const lines: string[] = [];
@@ -1484,7 +1689,7 @@ class Formatter {
       s += ' ' + this.kw('VALUES') + ' (' + rowEntry.values.map(v => this.formatNode(v)).join(', ') + ')';
     }
     if (node.select) {
-      if (this.selectHasClauseComments(node.select)) return null;
+      if (this.nodeHasComments(node.select)) return null;
       s += ' ' + this.collapseSelect(node.select);
     }
     if (node.exec) {
@@ -1499,12 +1704,14 @@ class Formatter {
     const indent = this.indentStr();
     const clauseIndent = this.indentStr(this.indent + 1);
 
-    // Try collapse
-    if (this.config.dml.collapseShortStatements) {
+    // Try collapse (skip if any node has comments)
+    if (this.config.dml.collapseShortStatements && !this.nodeHasComments(node)) {
+      const saved = this.saveEmittedComments();
       const collapsed = this.collapseUpdate(node);
       if (collapsed.length <= this.config.dml.collapseStatementsShorterThan) {
         return indent + collapsed;
       }
+      this.restoreEmittedComments(saved);
     }
 
     const lines: string[] = [];
@@ -1669,12 +1876,14 @@ class Formatter {
     const lines: string[] = [];
     const kwName = node.ifToken.value.toUpperCase() === 'WHILE' ? 'WHILE' : 'IF';
 
-    // Try collapse
-    if (this.config.controlFlow.collapseShortStatements) {
+    // Try collapse (skip if any node has comments)
+    if (this.config.controlFlow.collapseShortStatements && !this.nodeHasComments(node)) {
+      const saved = this.saveEmittedComments();
       const collapsed = this.collapseIfElse(node, kwName);
       if (collapsed.length <= this.config.controlFlow.collapseStatementsShorterThan) {
         return indent + collapsed;
       }
+      this.restoreEmittedComments(saved);
     }
 
     lines.push(indent + this.kw(kwName) + ' ' + this.formatNode(node.condition));
@@ -1859,13 +2068,15 @@ class Formatter {
   }
 
   private formatCase(node: CaseNode): string {
-    // Try collapse
-    if (this.config.caseExpressions.collapseShortCaseExpressions) {
+    // Try collapse (skip if any node has comments)
+    if (this.config.caseExpressions.collapseShortCaseExpressions && !this.nodeHasComments(node)) {
+      const saved = this.saveEmittedComments();
       const collapsed = this.collapseCase(node);
       const indentWidth = this.indent * this.tabStr.length;
       if (collapsed.length + indentWidth <= this.config.caseExpressions.collapseCaseExpressionsShorterThan) {
         return collapsed;
       }
+      this.restoreEmittedComments(saved);
     }
 
     const parts: string[] = [];
@@ -2807,14 +3018,16 @@ class Formatter {
       const dml = this.config.dml;
       const alias = this.formatParenGroupAlias(node);
       const innerSelect = node.inner[0] as SelectNode;
-      const hasInnerComments = !!innerSelect.selectToken?.leadingComments?.length || this.selectHasClauseComments(innerSelect);
+      const hasInnerComments = !!innerSelect.selectToken?.leadingComments?.length || this.nodeHasComments(innerSelect);
 
-      // Try collapsing the subquery if configured (skip collapse if pivot, close comments, or inner leading comments)
-      if (dml.collapseShortSubqueries && !node.pivot && !node.closeComments?.length && !hasInnerComments) {
+      // Try collapsing the subquery if configured (skip collapse if pivot, comments, or inner leading comments)
+      if (dml.collapseShortSubqueries && !node.pivot && !node.openParenComments?.length && !node.closeComments?.length && !hasInnerComments) {
+        const saved = this.saveEmittedComments();
         const collapsed = this.collapseSelect(innerSelect);
         if (('(' + collapsed + ')' + alias).length <= dml.collapseSubqueriesShorterThan) {
           return '(' + collapsed + ')' + alias;
         }
+        this.restoreEmittedComments(saved);
       }
 
       // Expanded: use subquery collapse settings for the inner SELECT
@@ -2822,13 +3035,19 @@ class Formatter {
       const savedThreshold = dml.collapseStatementsShorterThan;
       (this.config.dml as any).collapseShortStatements = dml.collapseShortSubqueries;
       (this.config.dml as any).collapseStatementsShorterThan = dml.collapseSubqueriesShorterThan;
+      let openCommentStr = '';
+      if (node.openParenComments?.length) {
+        const oci = this.indentStr(bi + 1);
+        openCommentStr = node.openParenComments.map(c => { this.emittedComments.add(c); return oci + c.value; }).join('\n') + '\n';
+      }
       const innerComments = this.formatTokenLeadingComments(innerSelect.selectToken, bi + 1);
       const innerFormatted = this.formatNode(node.inner[0], bi + 1);
       (this.config.dml as any).collapseShortStatements = savedCollapse;
       (this.config.dml as any).collapseStatementsShorterThan = savedThreshold;
 
       const closeCommentStr = this.formatCloseComments(node.closeComments, bi);
-      const innerContent = innerComments ? innerComments.trimEnd() + '\n' + innerFormatted : innerFormatted;
+      const allInnerComments = openCommentStr + (innerComments || '');
+      const innerContent = allInnerComments ? allInnerComments.trimEnd() + '\n' + innerFormatted : innerFormatted;
       return '(\n' + innerContent + closeCommentStr + '\n' + indent + ')' + alias + pivotSuffix;
     }
 

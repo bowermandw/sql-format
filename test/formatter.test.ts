@@ -1514,4 +1514,19 @@ describe('USE statement', () => {
     const count = result.split('-- leading comment').length - 1;
     expect(count).toBe(1);
   });
+
+  it('preserves comments before semicolon-prefixed CTE', () => {
+    const sql = '-- comment1\n-- comment2\n\n-- comment3\n-- comment4\n\n; WITH cte_name AS (select * from dbo.table1) SELECT * FROM cte_name;';
+    const result = formatSQL(sql);
+    expect(result).toContain('-- comment1');
+    expect(result).toContain('-- comment2');
+    expect(result).toContain('-- comment3');
+    expect(result).toContain('-- comment4');
+  });
+
+  it('preserves comments on semicolons between statements', () => {
+    const sql = 'SELECT 1; -- end comment\nSELECT 2';
+    const result = formatSQL(sql);
+    expect(result).toContain('-- end comment');
+  });
 });
