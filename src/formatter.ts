@@ -530,6 +530,13 @@ class Formatter {
       return comments ? comments.trimEnd() + '\n' + line : line;
     });
     parts.push(colStrs.join(',\n'));
+    // Emit any comments on the close paren (e.g., commented-out columns at end)
+    if (node.closeParen) {
+      const closeComments = this.formatTokenLeadingComments(node.closeParen, this.indent + 1);
+      if (closeComments) {
+        parts.push(closeComments.trimEnd());
+      }
+    }
     parts.push(baseIndent + ')');
     if (node.onFilegroup && node.onFilegroup.length > 0) {
       parts.push(baseIndent + node.onFilegroup.map(t => this.kw(t.value)).join(' '));
@@ -1120,6 +1127,7 @@ class Formatter {
         for (const t of node.keywords) if (this.tokenHasComments(t)) return true;
         if (this.nodeHasComments(node.name)) return true;
         for (const col of node.columns) if (this.nodeHasComments(col)) return true;
+        if (this.tokenHasComments(node.closeParen)) return true;
         if (node.onFilegroup) {
           for (const t of node.onFilegroup) if (this.tokenHasComments(t)) return true;
         }
@@ -1953,9 +1961,16 @@ class Formatter {
             : colIndent + this.formatColumnDef(c as ColumnDefNode, colNameWidth);
           return comments ? comments.trimEnd() + '\n' + line : line;
         });
+        let closeCommentStr = '';
+        if (v.tableCloseParen) {
+          const closeComments = this.formatTokenLeadingComments(v.tableCloseParen, this.indent + 1);
+          if (closeComments) {
+            closeCommentStr = '\n' + closeComments.trimEnd();
+          }
+        }
         return name + ' ' + asPrefix + this.kw('TABLE') + '\n' +
           baseIndent + '(\n' +
-          colStrs.join(',\n') + '\n' +
+          colStrs.join(',\n') + closeCommentStr + '\n' +
           baseIndent + ')';
       }
       let s = name + ' ' + asPrefix + this.formatDataType(v.dataType);

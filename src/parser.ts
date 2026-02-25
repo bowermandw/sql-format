@@ -410,6 +410,7 @@ class Parser {
   private parseCreateTable(keywords: Token[]): CreateTableNode {
     const name = this.parseQualifiedName();
     const columns: (ColumnDefNode | any)[] = [];
+    let closeParen: Token | undefined;
 
     if (this.isType(TokenType.LeftParen)) {
       this.advance(); // (
@@ -423,7 +424,7 @@ class Parser {
           columns.push(this.parseColumnDef());
         }
       }
-      if (this.isType(TokenType.RightParen)) this.advance();
+      if (this.isType(TokenType.RightParen)) closeParen = this.advance();
     }
 
     // Handle ON filegroup (e.g., ON PRIMARY)
@@ -436,7 +437,7 @@ class Parser {
       }
     }
 
-    return { type: 'createTable', keywords, name, columns, onFilegroup };
+    return { type: 'createTable', keywords, name, columns, closeParen, onFilegroup };
   }
 
   private parseAlterTable(keywords: Token[]): AlterTableNode {
@@ -1269,8 +1270,9 @@ class Parser {
             tableColumns.push(this.parseColumnDef());
           }
         }
-        if (this.isType(TokenType.RightParen)) this.advance();
-        variables.push({ name, asToken, dataType, tableColumns });
+        let tableCloseParen: Token | undefined;
+        if (this.isType(TokenType.RightParen)) tableCloseParen = this.advance();
+        variables.push({ name, asToken, dataType, tableColumns, tableCloseParen });
         return;
       }
       const dataType = this.parseDataType();

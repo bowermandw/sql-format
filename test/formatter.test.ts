@@ -1529,4 +1529,16 @@ describe('USE statement', () => {
     const result = formatSQL(sql);
     expect(result).toContain('-- end comment');
   });
+
+  it('preserves commented-out column at end of CREATE TABLE', () => {
+    const sql = 'CREATE TABLE dbo.t1 (\n    col1 INT NOT NULL,\n    col2 VARCHAR(50) NULL,\n    -- col3 BIT NOT NULL\n)';
+    const result = formatSQL(sql);
+    expect(result).toContain('-- col3 BIT NOT NULL');
+  });
+
+  it('preserves commented-out column at end of DECLARE TABLE', () => {
+    const sql = 'DECLARE @t TABLE (\n    col1 INT NOT NULL,\n    col2 VARCHAR(50) NULL\n    -- col3 BIT NOT NULL\n)';
+    const result = formatSQL(sql);
+    expect(result).toContain('-- col3 BIT NOT NULL');
+  });
 });

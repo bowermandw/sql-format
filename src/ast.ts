@@ -183,7 +183,7 @@ export interface TryCatchNode {
 export interface DeclareNode {
   type: 'declare';
   token: Token;
-  variables: { name: Token; asToken?: Token; dataType: SqlNode; default?: SqlNode; tableColumns?: (ColumnDefNode | ConstraintNode)[] }[];
+  variables: { name: Token; asToken?: Token; dataType: SqlNode; default?: SqlNode; tableColumns?: (ColumnDefNode | ConstraintNode)[]; tableCloseParen?: Token }[];
 }
 
 export interface SetNode {
@@ -275,6 +275,7 @@ export interface CreateTableNode {
   keywords: Token[];         // CREATE, TABLE
   name: SqlNode;
   columns: (ColumnDefNode | ConstraintNode)[];
+  closeParen?: Token;        // ) token (may have leadingComments for commented-out columns)
   onFilegroup?: Token[];     // ON PRIMARY, ON [filegroup], etc.
 }
 
