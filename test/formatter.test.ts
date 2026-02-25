@@ -1549,4 +1549,19 @@ describe('USE statement', () => {
     const count = result.split('-- trailing comment').length - 1;
     expect(count).toBe(1);
   });
+
+  it('preserves comma trailing comments on same line in SELECT', () => {
+    const sql = 'SELECT\n@a, -- comment1\n@b, -- comment2\n@c -- comment3\nFROM dbo.t';
+    const result = formatSQL(sql);
+    expect(result).toContain('@a, -- comment1');
+    expect(result).toContain('@b, -- comment2');
+    expect(result).toContain('@c -- comment3');
+  });
+
+  it('preserves trailing comment on last constraint token in CREATE TABLE', () => {
+    const sql = 'CREATE TABLE dbo.t (\n    col1 INT NOT NULL, -- pk\n    col2 BIT NOT NULL -- flag\n)';
+    const result = formatSQL(sql);
+    expect(result).toContain('NOT NULL, -- pk');
+    expect(result).toContain('NOT NULL -- flag');
+  });
 });

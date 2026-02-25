@@ -71,8 +71,7 @@ class Parser {
     const comma = this.advance();
     if (comma.trailingComment) {
       const next = this.current();
-      if (!next.leadingComments) next.leadingComments = [];
-      next.leadingComments.push(comma.trailingComment);
+      next._commaComment = comma.trailingComment;
       comma.trailingComment = undefined;
     }
     return comma;

@@ -339,6 +339,25 @@ class Formatter {
     return '';
   }
 
+  /** Get the trailing comment from the comma that preceded this list item's first token. */
+  private getCommaComment(node: SqlNode): string {
+    const token = this.getFirstToken(node);
+    if (token?._commaComment && !this.emittedComments.has(token._commaComment)) {
+      this.emittedComments.add(token._commaComment);
+      return ' ' + token._commaComment.value;
+    }
+    return '';
+  }
+
+  /** Get the trailing comment from the comma that preceded this token. */
+  private getTokenCommaComment(token: Token): string {
+    if (token?._commaComment && !this.emittedComments.has(token._commaComment)) {
+      this.emittedComments.add(token._commaComment);
+      return ' ' + token._commaComment.value;
+    }
+    return '';
+  }
+
   /**
    * Format a statement and append a semicolon if it's a leaf statement
    * and insertSemicolons is 'insert'.
@@ -526,12 +545,22 @@ class Formatter {
     const colStrs = node.columns.map(c => {
       const token = c.type === 'columnDef' ? (c as ColumnDefNode).name : (c as ConstraintNode).tokens[0];
       const comments = this.formatTokenLeadingComments(token, this.indent + 1);
+      const commaComment = this.getTokenCommaComment(token);
       const line = c.type === 'constraint'
         ? colIndent + this.formatConstraint(c as ConstraintNode)
         : colIndent + this.formatColumnDef(c as ColumnDefNode, nameWidth);
-      return comments ? comments.trimEnd() + '\n' + line : line;
+      return { str: comments ? comments.trimEnd() + '\n' + line : line, commaComment };
     });
-    parts.push(colStrs.join(',\n'));
+    // commaComment[i] is the trailing comment from the comma BEFORE item i,
+    // so it should appear after the comma on the previous line
+    const colLines: string[] = [];
+    for (let i = 0; i < colStrs.length; i++) {
+      const suffix = i < colStrs.length - 1
+        ? ',' + (colStrs[i + 1].commaComment || '')
+        : '';
+      colLines.push(colStrs[i].str + suffix);
+    }
+    parts.push(colLines.join('\n'));
     // Emit any comments on the close paren (e.g., commented-out columns at end)
     if (node.closeParen) {
       const closeComments = this.formatTokenLeadingComments(node.closeParen, this.indent + 1);
@@ -637,11 +666,11 @@ class Formatter {
           if (category === 'identifier') {
             parts.push(this.formatIdentifierPart(t));
           } else {
-            parts.push(this.kw(t.value));
+            parts.push(this.kwToken(t));
           }
         }
       } else {
-        parts.push(t.value);
+        parts.push(this.tokenValue(t));
       }
     }
     // Join with spaces but collapse around commas and closing parens
@@ -782,9 +811,13 @@ class Formatter {
     const cols = node.columns.map(c => this.formatSelectItem(c, aliasAlignWidth, true));
     // Collect leading comments for each column (e.g. commented-out columns)
     const colComments = node.columns.map(c => this.formatLeadingComments(c));
+    // Collect comma comments (trailing comment on the comma before each item)
+    const commaComments = node.columns.map(c => this.getCommaComment(c));
     this.indent = baseIndent;
 
     const leadingCommas = this.config.lists.commas.placeCommasBeforeItems;
+    // Helper: append comma + comma-trailing-comment to a line
+    const commaStr = (nextIdx: number) => ',' + (commaComments[nextIdx] || '');
 
     if (firstOnNewLine === 'always' || (firstOnNewLine === 'onlyIfSubsequentItems' && cols.length > 1)) {
       lines.push(selectLine);
@@ -793,7 +826,7 @@ class Formatter {
         if (leadingCommas && i > 0) {
           lines.push(clauseIndent.slice(0, -1) + ',' + cols[i]);
         } else {
-          lines.push(clauseIndent + cols[i] + (!leadingCommas && i < cols.length - 1 ? ',' : ''));
+          lines.push(clauseIndent + cols[i] + (!leadingCommas && i < cols.length - 1 ? commaStr(i + 1) : ''));
         }
       }
     } else {
@@ -824,13 +857,13 @@ class Formatter {
           if (colComments[0]) {
             lines.push(selectLine);
             lines.push(colComments[0].replace(/\n$/, ''));
-            lines.push(clauseIndent + cols[0] + ',');
+            lines.push(clauseIndent + cols[0] + commaStr(1));
           } else {
-            lines.push(selectLine + ' ' + cols[0] + ',');
+            lines.push(selectLine + ' ' + cols[0] + commaStr(1));
           }
           for (let i = 1; i < cols.length; i++) {
             if (colComments[i]) lines.push(colComments[i].replace(/\n$/, ''));
-            lines.push(clauseIndent + cols[i] + (i < cols.length - 1 ? ',' : ''));
+            lines.push(clauseIndent + cols[i] + (i < cols.length - 1 ? commaStr(i + 1) : ''));
           }
         }
       }
@@ -927,7 +960,7 @@ class Formatter {
   /** Check if a token has any comments (leading or trailing). */
   private tokenHasComments(token: Token | undefined): boolean {
     if (!token) return false;
-    return !!(token.leadingComments?.length || token.trailingComment || token.trailingComments?.length);
+    return !!(token.leadingComments?.length || token.trailingComment || token.trailingComments?.length || token._commaComment);
   }
 
   /**
@@ -1522,7 +1555,8 @@ class Formatter {
     for (let i = 0; i < node.items.length; i++) {
       const comments = this.formatLeadingComments(node.items[i]);
       if (comments) lines.push(comments.replace(/\n$/, ''));
-      const comma = i < node.items.length - 1 ? ',' : '';
+      const commaComment = i < node.items.length - 1 ? this.getCommaComment(node.items[i + 1]) : '';
+      const comma = i < node.items.length - 1 ? ',' + commaComment : '';
       lines.push(clauseIndent + this.formatNode(node.items[i]) + comma);
     }
     this.indent = savedIndent;
@@ -1558,7 +1592,8 @@ class Formatter {
       if (comments) lines.push(comments.replace(/\n$/, ''));
       let item = this.formatNode(node.items[i].expr);
       if (node.items[i].direction) item += ' ' + this.kw(node.items[i].direction!.value);
-      const comma = i < node.items.length - 1 ? ',' : '';
+      const commaComment = i < node.items.length - 1 ? this.getCommaComment(node.items[i + 1].expr) : '';
+      const comma = i < node.items.length - 1 ? ',' + commaComment : '';
       lines.push(clauseIndent + item + comma);
     }
     this.indent = savedIndent;
@@ -1959,14 +1994,22 @@ class Formatter {
           }));
           this.restoreEmittedComments(saved);
         }
-        const colStrs = v.tableColumns.map(c => {
+        const colData = v.tableColumns.map(c => {
           const token = c.type === 'columnDef' ? (c as ColumnDefNode).name : (c as ConstraintNode).tokens[0];
           const comments = this.formatTokenLeadingComments(token, this.indent + 1);
+          const commaComment = this.getTokenCommaComment(token);
           const line = c.type === 'constraint'
             ? colIndent + this.formatConstraint(c as ConstraintNode)
             : colIndent + this.formatColumnDef(c as ColumnDefNode, colNameWidth);
-          return comments ? comments.trimEnd() + '\n' + line : line;
+          return { str: comments ? comments.trimEnd() + '\n' + line : line, commaComment };
         });
+        const colLines: string[] = [];
+        for (let i = 0; i < colData.length; i++) {
+          const suffix = i < colData.length - 1
+            ? ',' + (colData[i + 1].commaComment || '')
+            : '';
+          colLines.push(colData[i].str + suffix);
+        }
         let closeCommentStr = '';
         if (v.tableCloseParen) {
           const closeComments = this.formatTokenLeadingComments(v.tableCloseParen, this.indent + 1);
@@ -1976,7 +2019,7 @@ class Formatter {
         }
         return name + ' ' + asPrefix + this.kw('TABLE') + '\n' +
           baseIndent + '(\n' +
-          colStrs.join(',\n') + closeCommentStr + '\n' +
+          colLines.join('\n') + closeCommentStr + '\n' +
           baseIndent + ')';
       }
       let s = name + ' ' + asPrefix + this.formatDataType(v.dataType);

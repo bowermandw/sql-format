@@ -45,4 +45,6 @@ export interface Token {
   precedingBlankLine?: boolean;
   /** Whether a blank line appeared between the last leading comment and this token */
   blankLineAfterLeadingComments?: boolean;
+  /** Trailing comment from the preceding comma (for list items) */
+  _commaComment?: Token;
 }
