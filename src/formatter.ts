@@ -1651,8 +1651,12 @@ class Formatter {
       const colLines: string[] = [];
       for (let i = 0; i < node.columns.length; i++) {
         const c = node.columns[i];
-        const comments = this.formatTokenLeadingComments(this.getFirstToken(c)!, this.indent + 1);
-        const comma = i < node.columns.length - 1 ? ',' : '';
+        const firstToken = this.getFirstToken(c)!;
+        const comments = this.formatTokenLeadingComments(firstToken, this.indent + 1);
+        const commaComment = i < node.columns.length - 1 && node.columns[i + 1]
+          ? this.getCommaComment(node.columns[i + 1])
+          : '';
+        const comma = i < node.columns.length - 1 ? ',' + commaComment : '';
         colLines.push(comments + clauseIndent + this.formatNode(c) + comma);
       }
       lines.push(colLines.join('\n'));

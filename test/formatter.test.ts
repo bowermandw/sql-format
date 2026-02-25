@@ -1564,4 +1564,12 @@ describe('USE statement', () => {
     expect(result).toContain('NOT NULL, -- pk');
     expect(result).toContain('NOT NULL -- flag');
   });
+
+  it('preserves comma trailing comments in INSERT column list', () => {
+    const sql = 'INSERT INTO dbo.t\n(\n    col1, -- c1\n    col2, -- c2\n    col3 -- c3\n)\nSELECT @a, @b, @c';
+    const result = formatSQL(sql);
+    expect(result).toContain('col1, -- c1');
+    expect(result).toContain('col2, -- c2');
+    expect(result).toContain('col3 -- c3');
+  });
 });
