@@ -47,29 +47,15 @@ class Formatter {
     return caseWord(word, this.config.casing);
   }
 
-  /**
-   * Emit the keyword for a token using kw()-style casing, but also auto-emit
-   * any unemitted leading/trailing comments attached to the token.
-   */
   private kwToken(token: Token): string {
-    let prefix = '';
-    if (token.leadingComments) {
-      for (const c of token.leadingComments) {
-        if (!this.emittedComments.has(c)) {
-          this.emittedComments.add(c);
-          prefix += c.value + '\n' + this.indentStr();
-        }
-      }
-    }
-    let suffix = '';
-    if (token.trailingComment && !this.emittedComments.has(token.trailingComment)) {
-      this.emittedComments.add(token.trailingComment);
-      suffix = ' ' + token.trailingComment.value;
-    }
-    return prefix + this.kw(token.value.toUpperCase()) + suffix;
+    return this.kw(token.value.toUpperCase());
   }
 
   private tokenValue(token: Token): string {
+    return token.type === TokenType.Word ? caseWord(token.value, this.config.casing) : token.value;
+  }
+
+  private tokenComments(token: Token): { prefix: string; suffix: string } {
     let prefix = '';
     if (token.leadingComments) {
       for (const c of token.leadingComments) {
@@ -84,8 +70,22 @@ class Formatter {
       this.emittedComments.add(token.trailingComment);
       suffix = ' ' + token.trailingComment.value;
     }
-    const val = token.type === TokenType.Word ? caseWord(token.value, this.config.casing) : token.value;
-    return prefix + val + suffix;
+    return { prefix, suffix };
+  }
+
+  private tokenValueWithComments(token: Token): string {
+    const { prefix, suffix } = this.tokenComments(token);
+    return prefix + this.tokenValue(token) + suffix;
+  }
+
+  private kwTokenWithComments(token: Token): string {
+    const { prefix, suffix } = this.tokenComments(token);
+    return prefix + this.kwToken(token) + suffix;
+  }
+
+  private formatIdentifierPartWithComments(token: Token): string {
+    const { prefix, suffix } = this.tokenComments(token);
+    return prefix + this.formatIdentifierPart(token) + suffix;
   }
 
   /** Build the semicolon suffix string based on whitespaceBeforeSemicolon config. */
@@ -103,6 +103,8 @@ class Formatter {
    * appending to the last line.
    */
   private withSemicolon(formatted: string, node?: SqlNode): string {
+    // If the semicolon was already emitted (e.g. for comment alignment), skip
+    if (node && (node as any)._semicolonHandled) return formatted;
     const mode = this.config.whitespace.insertSemicolons;
     if (mode === 'insert') {
       return formatted + this.semicolonStr();
@@ -595,7 +597,7 @@ class Formatter {
   }
 
   private formatColumnDef(node: ColumnDefNode, nameWidth: number = 0): string {
-    const colName = this.formatIdentifierPart(node.name);
+    const colName = this.formatIdentifierPartWithComments(node.name);
     const name = nameWidth > 0 ? this.padToWidth(colName, nameWidth) : colName;
     let s = `${name} ${this.formatDataType(node.dataType)}`;
     for (const c of node.constraints) {
@@ -642,7 +644,7 @@ class Formatter {
         if (parts.length > 0 && !parts[parts.length - 1].endsWith('(') && !parts[parts.length - 1].endsWith('.')) {
           parts.push(' ');
         }
-        parts.push(this.tokenValue(t));
+        parts.push(this.tokenValueWithComments(t));
       }
     }
     const actionStr = parts.join('');
@@ -667,17 +669,17 @@ class Formatter {
         const prevToken = i > 0 ? node.tokens[i - 1] : undefined;
         const afterCollate = prevToken?.type === TokenType.Word && prevToken.value.toUpperCase() === 'COLLATE';
         if (afterCollate) {
-          parts.push(this.tokenValue(t));
+          parts.push(this.tokenValueWithComments(t));
         } else {
           const category = t.type === TokenType.QuotedIdentifier ? 'identifier' : categorizeWord(t.value);
           if (category === 'identifier') {
-            parts.push(this.formatIdentifierPart(t));
+            parts.push(this.formatIdentifierPartWithComments(t));
           } else {
-            parts.push(this.kwToken(t));
+            parts.push(this.kwTokenWithComments(t));
           }
         }
       } else {
-        parts.push(this.tokenValue(t));
+        parts.push(this.tokenValueWithComments(t));
       }
     }
     // Join with spaces but collapse around commas and closing parens
@@ -702,7 +704,7 @@ class Formatter {
   // --- Raw Token (EXEC, fallback statements) ---
 
   private formatRawToken(node: RawTokenNode): string {
-    let s = this.tokenValue(node.token);
+    let s = this.tokenValueWithComments(node.token);
     if (node.extraTokens) {
       for (let i = 0; i < node.extraTokens.length; i++) {
         const t = node.extraTokens[i];
@@ -711,7 +713,7 @@ class Formatter {
           s += '.';
         } else if (s.endsWith('.')) {
           // Token after a dot is an identifier part
-          s += this.formatIdentifierPart(t);
+          s += this.formatIdentifierPartWithComments(t);
         } else if (t.type === TokenType.Comma) {
           s += ',';
         } else if (t.type === TokenType.Equals) {
@@ -723,9 +725,9 @@ class Formatter {
         } else if ((t.type === TokenType.Word && !t.value.startsWith('@') || t.type === TokenType.QuotedIdentifier) &&
                    i + 1 < node.extraTokens.length && node.extraTokens[i + 1].type === TokenType.Dot) {
           // Token before a dot is an identifier part (e.g. schema name)
-          s += ' ' + this.formatIdentifierPart(t);
+          s += ' ' + this.formatIdentifierPartWithComments(t);
         } else {
-          s += ' ' + this.tokenValue(t);
+          s += ' ' + this.tokenValueWithComments(t);
         }
       }
       return this.indentStr() + s;
@@ -815,21 +817,12 @@ class Formatter {
     }
 
     this.indent = baseIndent + 1;
-    // Save emittedComments so formatSelectItem doesn't auto-emit trailing comments
-    // (we handle them via the alignment system below)
-    const savedForCols = this.saveEmittedComments();
     const cols = node.columns.map(c => this.formatSelectItem(c, aliasAlignWidth, true));
-    // Capture which trailing comments were auto-emitted during formatSelectItem
-    const autoEmitted = this.emittedComments;
-    this.emittedComments = savedForCols;
-    // Now re-format columns, but this time the auto-emit will produce the same strings
-    // Actually, let's just strip auto-emitted trailing comments from cols and handle them separately
-    // Collect trailing comment tokens for each column
     const trailingCommentTokens: (Token | undefined)[] = node.columns.map(c => {
       const token = this.getLastToken(c);
-      return token?.trailingComment && autoEmitted.has(token.trailingComment) ? token.trailingComment : undefined;
+      return token?.trailingComment && this.emittedComments.has(token.trailingComment) ? token.trailingComment : undefined;
     });
-    // Strip auto-emitted trailing comments from cols strings
+    // Strip trailing comments emitted by *WithComments helpers so alignment system can place them
     const colsClean = cols.map((s, i) => {
       const tc = trailingCommentTokens[i];
       if (tc && s.endsWith(' ' + tc.value)) {
@@ -854,10 +847,18 @@ class Formatter {
 
     // Build per-column inline comment: for item i, the comment to show after
     // its comma comes from commaCommentTokens[i+1]; for the last item, use trailingCommentTokens
+    // or the semicolon trailing comment (propagated from INSERT/parent statement)
+    const semiTrailingComment = (node as any)._semicolonTrailingComment as Token | undefined;
     const inlineComments: (Token | undefined)[] = node.columns.map((_, i) => {
       if (i < node.columns.length - 1) return commaCommentTokens[i + 1];
-      return trailingCommentTokens[i];
+      return trailingCommentTokens[i] || semiTrailingComment;
     });
+
+    // Check if a semicolon will be appended to the last line
+    const lastHasSemicolon = semiTrailingComment ? true : (node as any)._hasSemicolon ? true : false;
+    // Whether we need to handle the semicolon ourselves (so it appears before any trailing comment)
+    const lastComment = semiTrailingComment || trailingCommentTokens[node.columns.length - 1];
+    const handleSemicolonInSelect = lastHasSemicolon && !!lastComment;
 
     // Compute comment alignment width
     let commentAlignWidth = 0;
@@ -865,24 +866,34 @@ class Formatter {
       for (let i = 0; i < colsClean.length; i++) {
         if (!inlineComments[i]) continue;
         const comma = (!leadingCommas && i < colsClean.length - 1) ? ',' : '';
-        const contentLen = colsClean[i].length + comma.length;
+        // For the last item, include semicolon in content width if applicable
+        const semi = (i === colsClean.length - 1 && lastHasSemicolon) ? ';' : '';
+        const contentLen = colsClean[i].length + comma.length + semi.length;
         if (contentLen > commentAlignWidth) commentAlignWidth = contentLen;
       }
     }
 
     // Helper: format a column line with aligned comment
-    const colWithComment = (colStr: string, comma: string, commentToken: Token | undefined): string => {
-      let line = colStr + comma;
+    const colWithComment = (colStr: string, suffix: string, commentToken: Token | undefined): string => {
+      let line = colStr + suffix;
       if (commentToken) {
         this.emittedComments.add(commentToken);
         if (this.config.lists.alignComments && commentAlignWidth > 0) {
-          const contentLen = colStr.length + comma.length;
+          const contentLen = colStr.length + suffix.length;
           const pad = commentAlignWidth - contentLen;
           if (pad > 0) line += ' '.repeat(pad);
         }
         line += ' ' + commentToken.value;
       }
       return line;
+    };
+
+    // Helper: compute suffix for column i (comma and/or semicolon)
+    const colSuffix = (i: number): string => {
+      let s = '';
+      if (!leadingCommas && i < colsClean.length - 1) s += ',';
+      if (i === colsClean.length - 1 && handleSemicolonInSelect) s += this.semicolonStr();
+      return s;
     };
 
     if (firstOnNewLine === 'always' || (firstOnNewLine === 'onlyIfSubsequentItems' && colsClean.length > 1)) {
@@ -892,8 +903,7 @@ class Formatter {
         if (leadingCommas && i > 0) {
           lines.push(clauseIndent.slice(0, -1) + ',' + colsClean[i]);
         } else {
-          const comma = (!leadingCommas && i < colsClean.length - 1) ? ',' : '';
-          lines.push(clauseIndent + colWithComment(colsClean[i], comma, inlineComments[i]));
+          lines.push(clauseIndent + colWithComment(colsClean[i], colSuffix(i), inlineComments[i]));
         }
       }
     } else {
@@ -903,9 +913,9 @@ class Formatter {
           // Comment between SELECT and single column — expand to separate lines
           lines.push(selectLine);
           lines.push(colComments[0].replace(/\n$/, ''));
-          lines.push(clauseIndent + colWithComment(colsClean[0], '', inlineComments[0]));
+          lines.push(clauseIndent + colWithComment(colsClean[0], colSuffix(0), inlineComments[0]));
         } else {
-          lines.push(selectLine + ' ' + colWithComment(colsClean[0], '', inlineComments[0]));
+          lines.push(selectLine + ' ' + colWithComment(colsClean[0], colSuffix(0), inlineComments[0]));
         }
       } else {
         if (leadingCommas) {
@@ -930,8 +940,7 @@ class Formatter {
           }
           for (let i = 1; i < colsClean.length; i++) {
             if (colComments[i]) lines.push(colComments[i].replace(/\n$/, ''));
-            const comma = i < colsClean.length - 1 ? ',' : '';
-            lines.push(clauseIndent + colWithComment(colsClean[i], comma, inlineComments[i]));
+            lines.push(clauseIndent + colWithComment(colsClean[i], colSuffix(i), inlineComments[i]));
           }
         }
       }
@@ -1020,6 +1029,12 @@ class Formatter {
       const selectComments = this.formatTokenLeadingComments(node.union.select.selectToken, baseIndent);
       if (selectComments) lines.push(selectComments.trimEnd());
       lines.push(this.formatSelect(node.union.select));
+    }
+
+    // If we handled the semicolon ourselves (for comment alignment), mark it so
+    // formatStatement/withSemicolon doesn't duplicate it
+    if (handleSemicolonInSelect) {
+      (node as any)._semicolonHandled = true;
     }
 
     return lines.join('\n');
@@ -1337,9 +1352,9 @@ class Formatter {
       s = s + ' '.repeat(alignWidth - effectiveLen);
     }
     if (alias.asToken) {
-      s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(alias.name);
+      s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPartWithComments(alias.name);
     } else {
-      s += ' ' + this.formatIdentifierPart(alias.name);
+      s += ' ' + this.formatIdentifierPartWithComments(alias.name);
     }
     return s;
   }
@@ -1379,14 +1394,14 @@ class Formatter {
     // IdentifierNode with alias — handle alignment
     if (node.type === 'identifier' && (node as IdentifierNode).alias && alignWidth !== undefined) {
       const idNode = node as IdentifierNode;
-      let s = idNode.parts.map(p => this.formatIdentifierPart(p)).join('.');
+      let s = idNode.parts.map(p => this.formatIdentifierPartWithComments(p)).join('.');
       if (alignWidth > s.length) {
         s = s + ' '.repeat(alignWidth - s.length);
       }
       if (idNode.alias!.asToken) {
-        s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(idNode.alias!.name);
+        s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPartWithComments(idNode.alias!.name);
       } else {
-        s += ' ' + this.formatIdentifierPart(idNode.alias!.name);
+        s += ' ' + this.formatIdentifierPartWithComments(idNode.alias!.name);
       }
       return s;
     }
@@ -1469,7 +1484,7 @@ class Formatter {
     const comments = this.formatLeadingComments(node.condition);
     this.indent = savedIndent;
     const condStr = this.formatCondition(node.condition, bi + 1);
-    return indent + this.kwToken(node.token) + '\n' + (comments || '') + clauseIndent + condStr;
+    return indent + this.kwTokenWithComments(node.token) + '\n' + (comments || '') + clauseIndent + condStr;
   }
 
   private formatCondition(node: SqlNode, indentLevel: number): string {
@@ -1528,7 +1543,7 @@ class Formatter {
         if (COMPARISON_OPS.includes(expr.operator.value)) {
           const left = this.maybeParenthesize(expr.left, this.formatNode(expr.left));
           const right = this.maybeParenthesize(expr.right, this.formatNode(expr.right));
-          const op = this.tokenValue(expr.operator);
+          const op = this.tokenValueWithComments(expr.operator);
           let leftStr = left;
           let rightStr = op + ' ' + right;
           if (parenthesized) {
@@ -1782,7 +1797,21 @@ class Formatter {
     }
 
     if (node.select) {
+      // Pass semicolon trailing comment to the SELECT so it can be included in comment alignment
+      if ((node as any)._semicolonTrailingComment) {
+        (node.select as any)._semicolonTrailingComment = (node as any)._semicolonTrailingComment;
+        (node as any)._semicolonTrailingComment = undefined;
+      }
+      // Pass _hasSemicolon so SELECT knows a semicolon will follow the last column
+      if ((node as any)._hasSemicolon) {
+        (node.select as any)._hasSemicolon = true;
+      }
       lines.push(this.formatSelect(node.select));
+      // If the SELECT handled the semicolon (for alignment), mark INSERT as handled too
+      if ((node.select as any)._semicolonHandled) {
+        (node as any)._hasSemicolon = false;
+        (node as any)._semicolonHandled = true;
+      }
     }
 
     if (node.exec) {
@@ -1898,9 +1927,9 @@ class Formatter {
       const cte = node.ctes[i];
 
       // CTE name (with optional column list and AS)
-      let namePart = this.tokenValue(cte.name);
+      let namePart = this.tokenValueWithComments(cte.name);
       if (cte.columns) {
-        const colList = '(' + cte.columns.map(c => this.tokenValue(c)).join(', ') + ')';
+        const colList = '(' + cte.columns.map(c => this.tokenValueWithComments(c)).join(', ') + ')';
         if (cfg.placeColumnsOnNewLine) {
           namePart += '\n' + nameIndent + colList;
         } else {
@@ -2493,9 +2522,9 @@ class Formatter {
     const alias = node.alias;
     if (alias) {
       if (alias.asToken) {
-        result += ' ' + this.kw(alias.asToken.value) + ' ' + this.formatIdentifierPart(alias.name);
+        result += ' ' + this.kw(alias.asToken.value) + ' ' + this.formatIdentifierPartWithComments(alias.name);
       } else {
-        result += ' ' + this.formatIdentifierPart(alias.name);
+        result += ' ' + this.formatIdentifierPartWithComments(alias.name);
       }
     }
 
@@ -2573,15 +2602,15 @@ class Formatter {
   // --- Identifiers ---
 
   private formatIdentifier(node: IdentifierNode, alignWidth?: number): string {
-    let s = node.parts.map(p => this.formatIdentifierPart(p)).join('.');
+    let s = node.parts.map(p => this.formatIdentifierPartWithComments(p)).join('.');
     if (node.alias && alignWidth !== undefined && alignWidth > s.length) {
       s += ' '.repeat(alignWidth - s.length);
     }
     if (node.alias) {
       if (node.alias.asToken) {
-        s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(node.alias.name);
+        s += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPartWithComments(node.alias.name);
       } else {
-        s += ' ' + this.formatIdentifierPart(node.alias.name);
+        s += ' ' + this.formatIdentifierPartWithComments(node.alias.name);
       }
     }
     if (node.pivot) {
@@ -2605,24 +2634,8 @@ class Formatter {
    * standalone SQL keywords.
    */
   private formatIdentifierPart(token: Token): string {
-    let prefix = '';
-    if (token.leadingComments) {
-      for (const c of token.leadingComments) {
-        if (!this.emittedComments.has(c)) {
-          this.emittedComments.add(c);
-          prefix += c.value + '\n' + this.indentStr();
-        }
-      }
-    }
-    let suffix = '';
-    if (token.trailingComment && !this.emittedComments.has(token.trailingComment)) {
-      this.emittedComments.add(token.trailingComment);
-      suffix = ' ' + token.trailingComment.value;
-    }
     const idConfig = this.config.identifiers;
     const mode = idConfig.encloseIdentifiers;
-
-    let core: string;
 
     // Already-quoted identifier: [name] or "name"
     if (token.type === TokenType.QuotedIdentifier) {
@@ -2630,41 +2643,32 @@ class Formatter {
       if (mode === 'withoutBrackets') {
         // Strip brackets, but keep them on reserved words if configured
         if (idConfig.alwaysBracketReservedWordIdentifiers && isReservedWord(inner)) {
-          core = '[' + inner + ']';
-        } else {
-          core = inner;
+          return '[' + inner + ']';
         }
+        return inner;
       } else if (mode === 'withBrackets') {
         // Normalize double-quotes to brackets
-        core = '[' + inner + ']';
-      } else {
-        core = token.value; // asis
+        return '[' + inner + ']';
       }
+      return token.value; // asis
     } else if (token.type === TokenType.Word) {
       // Regular word token in an identifier position
       // Skip @variables and wildcards
       if (token.value.startsWith('@') || token.value === '*') {
-        core = caseWord(token.value, this.config.casing);
-      } else {
-        const cased = caseWord(token.value, this.config.casing);
-
-        if (mode === 'withBrackets') {
-          const category = categorizeWord(token.value);
-          // Only bracket user-defined identifiers (not keywords, functions, data types)
-          if (category === 'identifier') {
-            core = '[' + cased + ']';
-          } else {
-            core = cased;
-          }
-        } else {
-          core = cased; // withoutBrackets or asis
-        }
+        return caseWord(token.value, this.config.casing);
       }
-    } else {
-      core = token.value;
+      const cased = caseWord(token.value, this.config.casing);
+      if (mode === 'withBrackets') {
+        const category = categorizeWord(token.value);
+        // Only bracket user-defined identifiers (not keywords, functions, data types)
+        if (category === 'identifier') {
+          return '[' + cased + ']';
+        }
+        return cased;
+      }
+      return cased; // withoutBrackets or asis
     }
-
-    return prefix + core + suffix;
+    return token.value;
   }
 
   // --- Literals ---
@@ -2672,7 +2676,7 @@ class Formatter {
   private formatLiteral(node: LiteralNode): string {
     // Apply casing to keyword-like literals (NULL, DEFAULT, etc.)
     if (node.token.type === TokenType.Word) {
-      return this.tokenValue(node.token);
+      return this.tokenValueWithComments(node.token);
     }
     return node.token.value;
   }
@@ -2839,9 +2843,9 @@ class Formatter {
   // --- EXISTS ---
 
   private formatExists(node: ExistsNode): string {
-    const notStr = node.notToken ? this.kwToken(node.notToken) + ' ' : '';
+    const notStr = node.notToken ? this.kwTokenWithComments(node.notToken) + ' ' : '';
     const subquery = this.formatNode(node.subquery);
-    return `${notStr}${this.kwToken(node.existsToken)} (${subquery})`;
+    return `${notStr}${this.kwTokenWithComments(node.existsToken)} (${subquery})`;
   }
 
   // --- PIVOT / UNPIVOT ---
@@ -3124,9 +3128,9 @@ class Formatter {
     let closeLine = indent + ')';
     if (node.alias) {
       if (node.alias.asToken) {
-        closeLine += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(node.alias.name);
+        closeLine += ' ' + this.kw('AS') + ' ' + this.formatIdentifierPartWithComments(node.alias.name);
       } else {
-        closeLine += ' ' + this.formatIdentifierPart(node.alias.name);
+        closeLine += ' ' + this.formatIdentifierPartWithComments(node.alias.name);
       }
     }
     lines.push(closeLine);
@@ -3139,9 +3143,9 @@ class Formatter {
   private formatParenGroupAlias(node: ParenGroupNode): string {
     if (!node.alias) return '';
     if (node.alias.asToken) {
-      return ' ' + this.kw('AS') + ' ' + this.formatIdentifierPart(node.alias.name);
+      return ' ' + this.kw('AS') + ' ' + this.formatIdentifierPartWithComments(node.alias.name);
     }
-    return ' ' + this.formatIdentifierPart(node.alias.name);
+    return ' ' + this.formatIdentifierPartWithComments(node.alias.name);
   }
 
   private formatParenGroup(node: ParenGroupNode, baseIndent?: number): string {
