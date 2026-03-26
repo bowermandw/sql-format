@@ -7,6 +7,7 @@ import {
   InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode,
   ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode,
   AlterTableNode, PivotNode,
+  DeclareCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode,
 } from './ast';
 
 export function parse(tokens: Token[]): BatchNode {
@@ -300,6 +301,26 @@ class Parser {
     // TRUNCATE TABLE
     if (upper === 'TRUNCATE') {
       return this.parseTruncate();
+    }
+
+    // OPEN cursor
+    if (upper === 'OPEN') {
+      return this.parseOpenCursor();
+    }
+
+    // CLOSE cursor
+    if (upper === 'CLOSE') {
+      return this.parseCloseCursor();
+    }
+
+    // DEALLOCATE cursor
+    if (upper === 'DEALLOCATE') {
+      return this.parseDeallocateCursor();
+    }
+
+    // FETCH cursor
+    if (upper === 'FETCH') {
+      return this.parseFetchCursor();
     }
 
     // Fallback: consume one token as RawTokenNode
@@ -1268,7 +1289,12 @@ class Parser {
 
   // --- DECLARE / SET / PRINT ---
 
-  private parseDeclare(): DeclareNode {
+  private parseDeclare(): DeclareNode | DeclareCursorNode {
+    // Check for DECLARE cursor_name CURSOR or DECLARE cursor_name INSENSITIVE/SCROLL CURSOR
+    if (this.looksLikeDeclareCursor()) {
+      return this.parseDeclareCursor();
+    }
+
     const token = this.advance(); // DECLARE
     const variables: DeclareNode['variables'] = [];
 
@@ -1483,6 +1509,7 @@ class Parser {
       case 'DECLARE': case 'SET': case 'PRINT': case 'RETURN': case 'THROW': case 'RAISERROR': case 'USE':
       case 'IF': case 'WHILE': case 'BEGIN': case 'WITH':
       case 'EXEC': case 'EXECUTE':
+      case 'OPEN': case 'CLOSE': case 'DEALLOCATE': case 'FETCH':
         return true;
       default:
         return false;
@@ -1947,6 +1974,140 @@ class Parser {
       items.push(this.parseExpression());
     }
     return items;
+  }
+
+  // --- Cursor statements ---
+
+  /**
+   * Check if current position is DECLARE cursor_name [INSENSITIVE] [SCROLL] CURSOR
+   * vs DECLARE @variable datatype (normal variable declaration).
+   * DECLARE CURSOR: name is NOT prefixed with @
+   */
+  private looksLikeDeclareCursor(): boolean {
+    // DECLARE is at pos, peek(1) is cursor name
+    const name = this.peek(1);
+    if (name.type !== TokenType.Word) return false;
+    // If name starts with @, it's a variable declaration, not cursor
+    if (name.value.startsWith('@')) return false;
+    // Check if the next word after name is CURSOR, INSENSITIVE, or SCROLL
+    const after = this.peek(2);
+    if (after.type !== TokenType.Word) return false;
+    const u = after.value.toUpperCase();
+    return u === 'CURSOR' || u === 'INSENSITIVE' || u === 'SCROLL';
+  }
+
+  private parseDeclareCursor(): DeclareCursorNode {
+    const token = this.advance(); // DECLARE
+    const name = this.advance();  // cursor_name
+
+    const cursorOptions: Token[] = [];
+
+    // ISO syntax: [INSENSITIVE] [SCROLL] CURSOR
+    // T-SQL syntax: CURSOR [LOCAL|GLOBAL] [FORWARD_ONLY|SCROLL] [STATIC|KEYSET|DYNAMIC|FAST_FORWARD] [READ_ONLY|SCROLL_LOCKS|OPTIMISTIC] [TYPE_WARNING]
+    const cursorKeywords = new Set([
+      'INSENSITIVE', 'SCROLL', 'CURSOR',
+      'LOCAL', 'GLOBAL', 'FORWARD_ONLY', 'STATIC', 'KEYSET', 'DYNAMIC', 'FAST_FORWARD',
+      'READ_ONLY', 'SCROLL_LOCKS', 'OPTIMISTIC', 'TYPE_WARNING',
+    ]);
+
+    while (this.isWord() && cursorKeywords.has(this.current().value.toUpperCase())) {
+      cursorOptions.push(this.advance());
+      if (cursorOptions[cursorOptions.length - 1].value.toUpperCase() === 'FOR') break;
+    }
+
+    const forToken = this.expectWord('FOR');
+    const select = this.parseSelect();
+
+    // FOR READ_ONLY | FOR UPDATE [OF col1, col2, ...]
+    let forUpdate: DeclareCursorNode['forUpdate'];
+    if (this.isWord('FOR') && (this.isWordAt(1, 'UPDATE') || this.isWordAt(1, 'READ_ONLY'))) {
+      const forTok = this.advance();
+      const actionTok = this.advance(); // UPDATE or READ_ONLY
+      let ofColumns: Token[] | undefined;
+      if (actionTok.value.toUpperCase() === 'UPDATE' && this.isWord('OF')) {
+        this.advance(); // OF
+        ofColumns = [];
+        ofColumns.push(this.advance());
+        while (this.isType(TokenType.Comma)) {
+          this.advanceComma();
+          ofColumns.push(this.advance());
+        }
+      }
+      forUpdate = { forToken: forTok, actionToken: actionTok, ofColumns };
+    }
+
+    return { type: 'declareCursor', token, name, cursorOptions, forToken, select, forUpdate };
+  }
+
+  private parseCursorName(): { global?: Token; name: SqlNode } {
+    let global: Token | undefined;
+    if (this.isWord('GLOBAL')) {
+      global = this.advance();
+    }
+    const name = this.current().value.startsWith('@')
+      ? { type: 'identifier', parts: [this.advance()] } as IdentifierNode
+      : { type: 'identifier', parts: [this.advance()] } as IdentifierNode;
+    return { global, name };
+  }
+
+  private parseOpenCursor(): OpenCursorNode {
+    const token = this.advance(); // OPEN
+    const { global, name } = this.parseCursorName();
+    return { type: 'openCursor', token, global, name };
+  }
+
+  private parseCloseCursor(): CloseCursorNode {
+    const token = this.advance(); // CLOSE
+    const { global, name } = this.parseCursorName();
+    return { type: 'closeCursor', token, global, name };
+  }
+
+  private parseDeallocateCursor(): DeallocateCursorNode {
+    const token = this.advance(); // DEALLOCATE
+    const { global, name } = this.parseCursorName();
+    return { type: 'deallocateCursor', token, global, name };
+  }
+
+  private parseFetchCursor(): FetchCursorNode {
+    const token = this.advance(); // FETCH
+
+    let orientation: Token | undefined;
+    let orientationValue: SqlNode | undefined;
+    let fromToken: Token | undefined;
+
+    // Check for orientation keywords
+    const upper = this.isWord() ? this.current().value.toUpperCase() : '';
+    if (['NEXT', 'PRIOR', 'FIRST', 'LAST', 'ABSOLUTE', 'RELATIVE'].includes(upper)) {
+      orientation = this.advance();
+      const orientUpper = orientation.value.toUpperCase();
+      // ABSOLUTE and RELATIVE take a value (n or @nvar)
+      if (orientUpper === 'ABSOLUTE' || orientUpper === 'RELATIVE') {
+        orientationValue = this.parseExpression();
+      }
+      if (this.isWord('FROM')) {
+        fromToken = this.advance();
+      }
+    } else if (this.isWord('FROM')) {
+      // FETCH FROM cursor_name (no orientation, just FROM)
+      fromToken = this.advance();
+    }
+
+    const { global, name } = this.parseCursorName();
+
+    // INTO @var1, @var2, ...
+    let into: FetchCursorNode['into'];
+    if (this.isWord('INTO')) {
+      const intoToken = this.advance();
+      const variables: SqlNode[] = [];
+      variables.push({ type: 'identifier', parts: [this.advance()] } as IdentifierNode);
+      while (this.isType(TokenType.Comma)) {
+        this.advanceComma();
+        variables.push({ type: 'identifier', parts: [this.advance()] } as IdentifierNode);
+      }
+      into = { token: intoToken, variables };
+    }
+
+    return { type: 'fetchCursor', token, orientation, orientationValue, fromToken, global, name, into };
   }
 
   private consumeRestAsRaw(initial: Token[]): RawTokenNode {

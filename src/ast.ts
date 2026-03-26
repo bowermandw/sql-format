@@ -37,6 +37,11 @@ export type SqlNode =
   | IdentifierNode
   | LiteralNode
   | UseNode
+  | DeclareCursorNode
+  | OpenCursorNode
+  | CloseCursorNode
+  | FetchCursorNode
+  | DeallocateCursorNode
   | RawTokenNode
   | ColumnListNode
   | PivotNode;
@@ -226,6 +231,48 @@ export interface RaiserrorNode {
   token: Token;
   args: SqlNode[];
   withOptions?: Token[];
+}
+
+export interface DeclareCursorNode {
+  type: 'declareCursor';
+  token: Token;              // DECLARE
+  name: Token;               // cursor_name
+  cursorOptions: Token[];    // INSENSITIVE, SCROLL, CURSOR, LOCAL, GLOBAL, FORWARD_ONLY, STATIC, KEYSET, DYNAMIC, FAST_FORWARD, READ_ONLY, SCROLL_LOCKS, OPTIMISTIC, TYPE_WARNING
+  forToken: Token;           // FOR
+  select: SqlNode;           // the SELECT statement
+  forUpdate?: { forToken: Token; actionToken: Token; ofColumns?: Token[] }; // FOR READ_ONLY | FOR UPDATE [OF col, ...]
+}
+
+export interface OpenCursorNode {
+  type: 'openCursor';
+  token: Token;              // OPEN
+  global?: Token;            // GLOBAL
+  name: SqlNode;             // cursor_name or @cursor_variable
+}
+
+export interface CloseCursorNode {
+  type: 'closeCursor';
+  token: Token;              // CLOSE
+  global?: Token;            // GLOBAL
+  name: SqlNode;             // cursor_name or @cursor_variable
+}
+
+export interface FetchCursorNode {
+  type: 'fetchCursor';
+  token: Token;              // FETCH
+  orientation?: Token;       // NEXT, PRIOR, FIRST, LAST
+  orientationValue?: SqlNode; // for ABSOLUTE/RELATIVE n
+  fromToken?: Token;         // FROM
+  global?: Token;            // GLOBAL
+  name: SqlNode;             // cursor_name or @cursor_variable
+  into?: { token: Token; variables: SqlNode[] }; // INTO @var1, @var2
+}
+
+export interface DeallocateCursorNode {
+  type: 'deallocateCursor';
+  token: Token;              // DEALLOCATE
+  global?: Token;            // GLOBAL
+  name: SqlNode;             // cursor_name or @cursor_variable
 }
 
 export interface ExpressionNode {

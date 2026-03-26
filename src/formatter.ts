@@ -1,5 +1,5 @@
 import { Token, TokenType } from './tokens';
-import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, UseNode, ThrowNode, RaiserrorNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode } from './ast';
+import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, UseNode, ThrowNode, RaiserrorNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode, DeclareCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode } from './ast';
 import { FormatConfig } from './config';
 import { caseWord, categorizeWord } from './casing';
 
@@ -141,6 +141,11 @@ class Formatter {
       case 'dropTable':
       case 'createTable':
       case 'alterTable':
+      case 'declareCursor':
+      case 'openCursor':
+      case 'closeCursor':
+      case 'fetchCursor':
+      case 'deallocateCursor':
         return true;
       default:
         return false;
@@ -161,6 +166,11 @@ class Formatter {
       case 'use': return node.token;
       case 'throw': return node.token;
       case 'raiserror': return node.token;
+      case 'declareCursor': return node.token;
+      case 'openCursor': return node.token;
+      case 'closeCursor': return node.token;
+      case 'fetchCursor': return node.token;
+      case 'deallocateCursor': return node.token;
       case 'beginEnd': return node.beginToken;
       case 'tryCatch': return node.tryBlock.beginToken;
       case 'ifElse': return node.ifToken;
@@ -447,6 +457,11 @@ class Formatter {
       case 'use': return this.formatUse(node);
       case 'throw': return this.formatThrow(node);
       case 'raiserror': return this.formatRaiserror(node);
+      case 'declareCursor': return this.formatDeclareCursor(node);
+      case 'openCursor': return this.formatOpenCursor(node);
+      case 'closeCursor': return this.formatCloseCursor(node);
+      case 'fetchCursor': return this.formatFetchCursor(node);
+      case 'deallocateCursor': return this.formatDeallocateCursor(node);
       case 'case': return this.formatCase(node);
       case 'expression': return this.formatExpression(node);
       case 'functionCall': return this.formatFunctionCall(node);
@@ -2221,6 +2236,80 @@ class Formatter {
       }
       result += ' ' + parts.join(' ');
     }
+    return result;
+  }
+
+  // --- CURSOR statements ---
+
+  private formatDeclareCursor(node: DeclareCursorNode): string {
+    const indent = this.indentStr();
+    let result = indent + this.kw('DECLARE') + ' ' + node.name.value;
+
+    // Cursor options: INSENSITIVE, SCROLL, CURSOR, LOCAL, GLOBAL, etc.
+    for (const opt of node.cursorOptions) {
+      result += ' ' + this.kw(opt.value);
+    }
+
+    result += '\n' + indent + this.kw('FOR') + '\n';
+
+    // Format the SELECT indented one level
+    this.indent++;
+    result += this.formatNode(node.select);
+    this.indent--;
+
+    if (node.forUpdate) {
+      result += '\n' + indent + this.kw('FOR') + ' ' + this.kw(node.forUpdate.actionToken.value);
+      if (node.forUpdate.ofColumns && node.forUpdate.ofColumns.length > 0) {
+        result += ' ' + this.kw('OF') + ' ' + node.forUpdate.ofColumns.map(c => c.value).join(', ');
+      }
+    }
+
+    return result;
+  }
+
+  private formatCursorRef(global: Token | undefined, name: SqlNode): string {
+    let result = '';
+    if (global) result += this.kw('GLOBAL') + ' ';
+    result += this.formatNode(name);
+    return result;
+  }
+
+  private formatOpenCursor(node: OpenCursorNode): string {
+    const indent = this.indentStr();
+    return indent + this.kw('OPEN') + ' ' + this.formatCursorRef(node.global, node.name);
+  }
+
+  private formatCloseCursor(node: CloseCursorNode): string {
+    const indent = this.indentStr();
+    return indent + this.kw('CLOSE') + ' ' + this.formatCursorRef(node.global, node.name);
+  }
+
+  private formatDeallocateCursor(node: DeallocateCursorNode): string {
+    const indent = this.indentStr();
+    return indent + this.kw('DEALLOCATE') + ' ' + this.formatCursorRef(node.global, node.name);
+  }
+
+  private formatFetchCursor(node: FetchCursorNode): string {
+    const indent = this.indentStr();
+    let result = indent + this.kw('FETCH');
+
+    if (node.orientation) {
+      result += ' ' + this.kw(node.orientation.value);
+      if (node.orientationValue) {
+        result += ' ' + this.formatNode(node.orientationValue);
+      }
+    }
+
+    if (node.fromToken) {
+      result += ' ' + this.kw('FROM');
+    }
+
+    result += ' ' + this.formatCursorRef(node.global, node.name);
+
+    if (node.into) {
+      result += ' ' + this.kw('INTO') + ' ' + node.into.variables.map(v => this.formatNode(v)).join(', ');
+    }
+
     return result;
   }
 
