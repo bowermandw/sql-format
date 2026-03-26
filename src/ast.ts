@@ -37,6 +37,7 @@ export type SqlNode =
   | IdentifierNode
   | LiteralNode
   | UseNode
+  | SetCursorNode
   | DeclareCursorNode
   | OpenCursorNode
   | CloseCursorNode
@@ -238,6 +239,16 @@ export interface DeclareCursorNode {
   token: Token;              // DECLARE
   name: Token;               // cursor_name
   cursorOptions: Token[];    // INSENSITIVE, SCROLL, CURSOR, LOCAL, GLOBAL, FORWARD_ONLY, STATIC, KEYSET, DYNAMIC, FAST_FORWARD, READ_ONLY, SCROLL_LOCKS, OPTIMISTIC, TYPE_WARNING
+  forToken: Token;           // FOR
+  select: SqlNode;           // the SELECT statement
+  forUpdate?: { forToken: Token; actionToken: Token; ofColumns?: Token[] }; // FOR READ_ONLY | FOR UPDATE [OF col, ...]
+}
+
+export interface SetCursorNode {
+  type: 'setCursor';
+  token: Token;              // SET
+  target: SqlNode;           // @cursor_variable
+  cursorOptions: Token[];    // CURSOR, LOCAL, GLOBAL, FORWARD_ONLY, SCROLL, STATIC, KEYSET, DYNAMIC, FAST_FORWARD, READ_ONLY, SCROLL_LOCKS, OPTIMISTIC, TYPE_WARNING
   forToken: Token;           // FOR
   select: SqlNode;           // the SELECT statement
   forUpdate?: { forToken: Token; actionToken: Token; ofColumns?: Token[] }; // FOR READ_ONLY | FOR UPDATE [OF col, ...]

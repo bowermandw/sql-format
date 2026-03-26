@@ -1,5 +1,5 @@
 import { Token, TokenType } from './tokens';
-import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, UseNode, ThrowNode, RaiserrorNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode, DeclareCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode } from './ast';
+import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, UseNode, ThrowNode, RaiserrorNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode, DeclareCursorNode, SetCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode } from './ast';
 import { FormatConfig } from './config';
 import { caseWord, categorizeWord } from './casing';
 
@@ -142,6 +142,7 @@ class Formatter {
       case 'createTable':
       case 'alterTable':
       case 'declareCursor':
+      case 'setCursor':
       case 'openCursor':
       case 'closeCursor':
       case 'fetchCursor':
@@ -167,6 +168,7 @@ class Formatter {
       case 'throw': return node.token;
       case 'raiserror': return node.token;
       case 'declareCursor': return node.token;
+      case 'setCursor': return node.token;
       case 'openCursor': return node.token;
       case 'closeCursor': return node.token;
       case 'fetchCursor': return node.token;
@@ -458,6 +460,7 @@ class Formatter {
       case 'throw': return this.formatThrow(node);
       case 'raiserror': return this.formatRaiserror(node);
       case 'declareCursor': return this.formatDeclareCursor(node);
+      case 'setCursor': return this.formatSetCursor(node);
       case 'openCursor': return this.formatOpenCursor(node);
       case 'closeCursor': return this.formatCloseCursor(node);
       case 'fetchCursor': return this.formatFetchCursor(node);
@@ -2249,6 +2252,30 @@ class Formatter {
     for (const opt of node.cursorOptions) {
       result += ' ' + this.kw(opt.value);
     }
+
+    result += '\n' + indent + this.kw('FOR') + '\n';
+
+    // Format the SELECT indented one level
+    this.indent++;
+    result += this.formatNode(node.select);
+    this.indent--;
+
+    if (node.forUpdate) {
+      result += '\n' + indent + this.kw('FOR') + ' ' + this.kw(node.forUpdate.actionToken.value);
+      if (node.forUpdate.ofColumns && node.forUpdate.ofColumns.length > 0) {
+        result += ' ' + this.kw('OF') + ' ' + node.forUpdate.ofColumns.map(c => c.value).join(', ');
+      }
+    }
+
+    return result;
+  }
+
+  private formatSetCursor(node: SetCursorNode): string {
+    const indent = this.indentStr();
+    let result = indent + this.kw('SET') + ' ' + this.formatNode(node.target) + ' = ';
+
+    // CURSOR [options]
+    result += node.cursorOptions.map(opt => this.kw(opt.value)).join(' ');
 
     result += '\n' + indent + this.kw('FOR') + '\n';
 

@@ -223,6 +223,63 @@ DEALLOCATE emp_cursor;`;
     });
   });
 
+  // --- SET @var = CURSOR ---
+
+  describe('SET @var = CURSOR', () => {
+    it('formats SET @var = CURSOR ... FOR SELECT', () => {
+      const result = formatSQL('SET @CursorVar = CURSOR SCROLL DYNAMIC FOR SELECT LastName FROM vEmployee');
+      expect(result).toContain('SET @CursorVar = CURSOR SCROLL DYNAMIC');
+      expect(result).toContain('FOR');
+      expect(result).toContain('SELECT');
+    });
+
+    it('formats SET @var = CURSOR LOCAL FAST_FORWARD FOR SELECT', () => {
+      const result = formatSQL('SET @c = CURSOR LOCAL FAST_FORWARD FOR SELECT id FROM t');
+      expect(result).toContain('SET @c = CURSOR LOCAL FAST_FORWARD');
+    });
+
+    it('formats SET @var = CURSOR FOR SELECT ... FOR READ ONLY (two words)', () => {
+      const result = formatSQL('SET @c = CURSOR FOR SELECT id FROM t FOR READ ONLY');
+      expect(result).toContain('FOR READ_ONLY');
+    });
+
+    it('formats SET @var = CURSOR FOR SELECT ... FOR UPDATE OF columns', () => {
+      const result = formatSQL('SET @c = CURSOR FOR SELECT id, name FROM t FOR UPDATE OF name');
+      expect(result).toContain('FOR UPDATE OF name');
+    });
+
+    it('indents the SELECT under FOR', () => {
+      const result = formatSQL('SET @c = CURSOR SCROLL DYNAMIC FOR SELECT col1, col2 FROM dbo.my_table WHERE active = 1');
+      const lines = result.split('\n');
+      const selectLine = lines.find(l => l.trimStart().startsWith('SELECT'));
+      expect(selectLine).toBeTruthy();
+      expect(selectLine!.startsWith('    ')).toBe(true);
+    });
+
+    it('formats a full cursor variable lifecycle', () => {
+      const sql = `
+DECLARE @MyCursor CURSOR;
+SET @MyCursor = CURSOR LOCAL SCROLL FOR SELECT id, name FROM dbo.items;
+OPEN @MyCursor;
+FETCH NEXT FROM @MyCursor INTO @id, @name;
+CLOSE @MyCursor;
+DEALLOCATE @MyCursor;`;
+      const result = formatSQL(sql);
+      expect(result).toContain('SET @MyCursor = CURSOR LOCAL SCROLL');
+      expect(result).toContain('OPEN @MyCursor');
+      expect(result).toContain('FETCH NEXT FROM @MyCursor INTO @id, @name');
+      expect(result).toContain('CLOSE @MyCursor');
+      expect(result).toContain('DEALLOCATE @MyCursor');
+    });
+
+    it('applies keyword casing to SET cursor', () => {
+      const result = formatSQL('set @c = cursor scroll dynamic for select 1', {
+        casing: { reservedKeywords: 'uppercase', builtInDataTypes: 'uppercase' },
+      });
+      expect(result).toContain('SET @c = CURSOR SCROLL DYNAMIC');
+    });
+  });
+
   // --- Keyword casing ---
 
   describe('keyword casing', () => {

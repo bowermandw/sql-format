@@ -7,7 +7,7 @@ import {
   InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode,
   ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode,
   AlterTableNode, PivotNode,
-  DeclareCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode,
+  DeclareCursorNode, SetCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode,
 } from './ast';
 
 export function parse(tokens: Token[]): BatchNode {
@@ -1341,7 +1341,7 @@ class Parser {
     return { type: 'declare', token, variables };
   }
 
-  private parseSet(): SetNode {
+  private parseSet(): SetNode | SetCursorNode {
     const token = this.advance(); // SET
 
     // Special forms: SET NOCOUNT ON/OFF, SET ANSI_NULLS ON/OFF, etc.
@@ -1408,6 +1408,12 @@ class Parser {
     if (this.isType(TokenType.Equals)) {
       this.advance();
     }
+
+    // SET @cursor_var = CURSOR ... FOR SELECT
+    if (this.isWord('CURSOR')) {
+      return this.parseSetCursor(token, target);
+    }
+
     const value = this.parseExpression();
     return { type: 'set', token, target, value };
   }
@@ -2037,6 +2043,49 @@ class Parser {
     }
 
     return { type: 'declareCursor', token, name, cursorOptions, forToken, select, forUpdate };
+  }
+
+  private parseSetCursor(token: Token, target: SqlNode): SetCursorNode {
+    const cursorOptions: Token[] = [];
+
+    // CURSOR [LOCAL|GLOBAL] [FORWARD_ONLY|SCROLL] [STATIC|KEYSET|DYNAMIC|FAST_FORWARD] [READ_ONLY|SCROLL_LOCKS|OPTIMISTIC] [TYPE_WARNING]
+    const cursorKeywords = new Set([
+      'CURSOR', 'LOCAL', 'GLOBAL', 'FORWARD_ONLY', 'SCROLL',
+      'STATIC', 'KEYSET', 'DYNAMIC', 'FAST_FORWARD',
+      'READ_ONLY', 'SCROLL_LOCKS', 'OPTIMISTIC', 'TYPE_WARNING',
+    ]);
+
+    while (this.isWord() && cursorKeywords.has(this.current().value.toUpperCase())) {
+      cursorOptions.push(this.advance());
+    }
+
+    const forToken = this.expectWord('FOR');
+    const select = this.parseSelect();
+
+    // FOR READ_ONLY | FOR UPDATE [OF col1, col2, ...]
+    let forUpdate: SetCursorNode['forUpdate'];
+    if (this.isWord('FOR') && (this.isWordAt(1, 'UPDATE') || this.isWordAt(1, 'READ_ONLY') || this.isWordAt(1, 'READ'))) {
+      const forTok = this.advance();
+      let actionTok = this.advance(); // UPDATE, READ_ONLY, or READ
+      // Handle "FOR READ ONLY" (two words, no underscore)
+      if (actionTok.value.toUpperCase() === 'READ' && this.isWord('ONLY')) {
+        this.advance(); // consume ONLY
+        actionTok = { ...actionTok, value: 'READ_ONLY' };
+      }
+      let ofColumns: Token[] | undefined;
+      if (actionTok.value.toUpperCase() === 'UPDATE' && this.isWord('OF')) {
+        this.advance(); // OF
+        ofColumns = [];
+        ofColumns.push(this.advance());
+        while (this.isType(TokenType.Comma)) {
+          this.advanceComma();
+          ofColumns.push(this.advance());
+        }
+      }
+      forUpdate = { forToken: forTok, actionToken: actionTok, ofColumns };
+    }
+
+    return { type: 'setCursor', token, target, cursorOptions, forToken, select, forUpdate };
   }
 
   private parseCursorName(): { global?: Token; name: SqlNode } {
