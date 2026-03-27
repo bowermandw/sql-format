@@ -68,6 +68,13 @@ describe('cursor statements', () => {
       const result = formatSQL('DECLARE MyCursor CURSOR FOR SELECT 1');
       expect(result).toContain('DECLARE MyCursor CURSOR');
     });
+
+    it('handles bracketed cursor names', () => {
+      const result = formatSQL('DECLARE [cursorName] CURSOR LOCAL FORWARD_ONLY READ_ONLY FOR SELECT col1, col2 FROM t');
+      expect(result).toContain('DECLARE [cursorName] CURSOR LOCAL FORWARD_ONLY READ_ONLY');
+      expect(result).toContain('FOR');
+      expect(result).toContain('SELECT');
+    });
   });
 
   // --- OPEN ---

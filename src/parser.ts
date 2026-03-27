@@ -1992,7 +1992,7 @@ class Parser {
   private looksLikeDeclareCursor(): boolean {
     // DECLARE is at pos, peek(1) is cursor name
     const name = this.peek(1);
-    if (name.type !== TokenType.Word) return false;
+    if (name.type !== TokenType.Word && name.type !== TokenType.QuotedIdentifier) return false;
     // If name starts with @, it's a variable declaration, not cursor
     if (name.value.startsWith('@')) return false;
     // Check if the next word after name is CURSOR, INSENSITIVE, or SCROLL
