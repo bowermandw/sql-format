@@ -19,6 +19,7 @@ import {
   ConstraintNode,
   SetNode,
 } from './ast';
+import { Token } from './tokens';
 
 export interface Warning {
   message: string;
@@ -31,6 +32,7 @@ export interface AnalyzeOptions {
   warnMissingAlias: boolean;
   warnMissingNocount: boolean;
   warnMissingNullability: boolean;
+  checkInsertColumns: boolean;
 }
 
 export function analyze(ast: BatchNode, options: AnalyzeOptions): Warning[] {
@@ -132,6 +134,9 @@ function walkStatement(
     case 'insert': {
       const ins = node as InsertNode;
       checkTableReference(ins.target, options, warnings, cteNames, false);
+      if (options.checkInsertColumns) {
+        checkInsertColumnMapping(ins, warnings);
+      }
       if (ins.select) walkStatement(ins.select, options, warnings, cteNames);
       break;
     }
@@ -323,6 +328,77 @@ function checkMissingNullability(
       warnings.push({ message: line ? `${msg} (line ${line})` : msg, line });
     }
   }
+}
+
+function normalizeColumnName(token: Token | undefined): string | undefined {
+  if (!token) return undefined;
+  let v = token.value;
+  if (v.startsWith('[') && v.endsWith(']')) v = v.slice(1, -1);
+  else if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
+  return v;
+}
+
+function getSourceItemName(item: SqlNode): string | undefined {
+  const aliased = (item as { alias?: { name: Token } }).alias;
+  if (aliased?.name) return normalizeColumnName(aliased.name);
+  if (item.type === 'identifier') {
+    const id = item as IdentifierNode;
+    return normalizeColumnName(id.parts[id.parts.length - 1]);
+  }
+  return undefined;
+}
+
+function getTargetColumnName(node: SqlNode): string | undefined {
+  if (node.type !== 'identifier') return undefined;
+  const id = node as IdentifierNode;
+  return normalizeColumnName(id.parts[id.parts.length - 1]);
+}
+
+function checkInsertColumnMapping(ins: InsertNode, warnings: Warning[]): void {
+  if (!ins.columns || ins.columns.length === 0) return;
+  if (!ins.select) return;
+
+  const targets = ins.columns;
+  const sources = ins.select.columns;
+  const line = ins.insertToken?.line;
+  const tableName =
+    ins.target.type === 'identifier'
+      ? getIdentifierName(ins.target as IdentifierNode)
+      : 'target';
+
+  const n = Math.max(targets.length, sources.length);
+  const sourceLabels: string[] = [];
+  for (let i = 0; i < n; i++) {
+    if (i < sources.length) {
+      sourceLabels.push(getSourceItemName(sources[i]) ?? '<expr>');
+    } else {
+      sourceLabels.push('(missing)');
+    }
+  }
+  const pad = sourceLabels.reduce((m, s) => Math.max(m, s.length), 0);
+
+  const lines: string[] = [];
+  lines.push(`INSERT into ${tableName}${line ? ` (line ${line})` : ''}:`);
+
+  for (let i = 0; i < n; i++) {
+    const src = sourceLabels[i];
+    const tgt = i < targets.length ? (getTargetColumnName(targets[i]) ?? '?') : '(no target)';
+    const srcRaw = i < sources.length ? getSourceItemName(sources[i]) : undefined;
+    const isMismatch =
+      i >= targets.length ||
+      i >= sources.length ||
+      srcRaw === undefined ||
+      srcRaw.toLowerCase() !== tgt.toLowerCase();
+    lines.push(`  ${src.padEnd(pad)} -> ${tgt}${isMismatch ? '   [MISMATCH]' : ''}`);
+  }
+
+  if (targets.length !== sources.length) {
+    lines.push(
+      `  Warning: INSERT has ${targets.length} target column(s) but SELECT has ${sources.length} item(s).`
+    );
+  }
+
+  warnings.push({ message: lines.join('\n'), line });
 }
 
 function checkExecProcSchema(raw: RawTokenNode, warnings: Warning[]): void {

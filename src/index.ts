@@ -20,6 +20,7 @@ Options:
   -W, --warn-missing-alias                Warn when table/view has no alias
   -N, --warn-missing-nocount              Warn when stored procedure lacks SET NOCOUNT ON
   -n, --warn-missing-nullability          Warn when temp table/table variable column lacks NULL/NOT NULL
+  -k, --check-insert-columns              Show INSERT...SELECT column mapping and flag mismatches
   -t, --tokens                            Print token list (debug mode)
   -a, --ast                               Print AST as JSON (debug mode)
   -h, --help                              Show this help message
@@ -43,6 +44,7 @@ function main(): void {
   let warnMissingAlias = false;
   let warnMissingNocount = false;
   let warnMissingNullability = false;
+  let checkInsertColumns = false;
   let debugTokens = false;
   let debugAst = false;
 
@@ -71,6 +73,8 @@ function main(): void {
       warnMissingNocount = true;
     } else if (arg === '--warn-missing-nullability' || arg === '-n') {
       warnMissingNullability = true;
+    } else if (arg === '--check-insert-columns' || arg === '-k') {
+      checkInsertColumns = true;
     } else if (arg === '--tokens' || arg === '-t') {
       debugTokens = true;
     } else if (arg === '--ast' || arg === '-a') {
@@ -177,8 +181,8 @@ function main(): void {
   }
 
   // Analyze for warnings
-  if (warnMissingSchema || warnMissingAlias || warnMissingNocount || warnMissingNullability) {
-    const warnings = analyze(ast, { warnMissingSchema, warnMissingAlias, warnMissingNocount, warnMissingNullability });
+  if (warnMissingSchema || warnMissingAlias || warnMissingNocount || warnMissingNullability || checkInsertColumns) {
+    const warnings = analyze(ast, { warnMissingSchema, warnMissingAlias, warnMissingNocount, warnMissingNullability, checkInsertColumns });
     for (const w of warnings) {
       console.warn(w.message);
     }

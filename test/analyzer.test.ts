@@ -3,7 +3,7 @@ import { tokenize, attachComments } from '../src/tokenizer';
 import { parse } from '../src/parser';
 import { analyze, Warning } from '../src/analyzer';
 
-function getWarnings(sql: string, opts: { schema?: boolean; alias?: boolean; nocount?: boolean; nullability?: boolean } = {}): Warning[] {
+function getWarnings(sql: string, opts: { schema?: boolean; alias?: boolean; nocount?: boolean; nullability?: boolean; checkInsertColumns?: boolean } = {}): Warning[] {
   const tokens = attachComments(tokenize(sql));
   const ast = parse(tokens);
   return analyze(ast, {
@@ -11,6 +11,7 @@ function getWarnings(sql: string, opts: { schema?: boolean; alias?: boolean; noc
     warnMissingAlias: opts.alias ?? false,
     warnMissingNocount: opts.nocount ?? false,
     warnMissingNullability: opts.nullability ?? false,
+    checkInsertColumns: opts.checkInsertColumns ?? false,
   });
 }
 
@@ -289,6 +290,99 @@ END`;
   describe('no warnings when disabled', () => {
     it('produces no warnings when all options are false', () => {
       const warnings = getWarnings('SELECT * FROM table_name');
+      expect(warnings).toHaveLength(0);
+    });
+  });
+
+  describe('insert column mapping check', () => {
+    it('shows mapping with no MISMATCH when columns align', () => {
+      const sql = `INSERT INTO dbo.t (col1, col2, col3) SELECT col1, col2, col3 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      const m = warnings[0].message;
+      expect(m).toContain('INSERT into dbo.t');
+      expect(m).toContain('col1 -> col1');
+      expect(m).toContain('col2 -> col2');
+      expect(m).toContain('col3 -> col3');
+      expect(m).not.toContain('[MISMATCH]');
+    });
+
+    it('flags swapped columns as MISMATCH', () => {
+      const sql = `INSERT INTO t (col1, col2, col3, col4) SELECT col1, col2, 'x' AS col4, 'x' AS col3 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      const m = warnings[0].message;
+      expect(m).toContain('col4 -> col3   [MISMATCH]');
+      expect(m).toContain('col3 -> col4   [MISMATCH]');
+      const mismatches = m.match(/\[MISMATCH\]/g);
+      expect(mismatches).toHaveLength(2);
+    });
+
+    it('uses last part of qualified source name for comparison', () => {
+      const sql = `INSERT INTO t (col1, col2) SELECT s.col1, s.col2 FROM src s`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).not.toContain('[MISMATCH]');
+    });
+
+    it('uses alias instead of underlying expression name', () => {
+      const sql = `INSERT INTO t (col1, col2) SELECT other_col AS col1, col2 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      const m = warnings[0].message;
+      expect(m).toContain('col1 -> col1');
+      expect(m).not.toContain('[MISMATCH]');
+    });
+
+    it('shows <expr> and flags MISMATCH for literal without alias', () => {
+      const sql = `INSERT INTO t (col1, col2) SELECT 'hardcoded', col2 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      const m = warnings[0].message;
+      expect(m).toContain('<expr> -> col1   [MISMATCH]');
+      expect(m).toContain('col2   -> col2');
+    });
+
+    it('emits column-count mismatch warning line and pads short side', () => {
+      const sql = `INSERT INTO t (col1, col2, col3) SELECT col1, col2 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      const m = warnings[0].message;
+      expect(m).toContain('INSERT has 3 target column(s) but SELECT has 2 item(s).');
+      expect(m).toContain('(missing)');
+    });
+
+    it('emits nothing for INSERT without explicit column list', () => {
+      const sql = `INSERT INTO t SELECT col1, col2 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(0);
+    });
+
+    it('emits nothing for INSERT...VALUES', () => {
+      const sql = `INSERT INTO t (col1, col2) VALUES ('a', 'b')`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(0);
+    });
+
+    it('detects INSERT inside BEGIN...END', () => {
+      const sql = `BEGIN INSERT INTO t (col1, col2) SELECT col2, col1 FROM src END`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      const m = warnings[0].message;
+      const mismatches = m.match(/\[MISMATCH\]/g);
+      expect(mismatches).toHaveLength(2);
+    });
+
+    it('compares case-insensitively and strips brackets', () => {
+      const sql = `INSERT INTO t ([col1], col2) SELECT [COL1], COL2 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).not.toContain('[MISMATCH]');
+    });
+
+    it('emits nothing when checkInsertColumns is false', () => {
+      const sql = `INSERT INTO t (col1, col2) SELECT col2, col1 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: false });
       expect(warnings).toHaveLength(0);
     });
   });
