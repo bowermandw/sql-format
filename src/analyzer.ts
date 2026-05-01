@@ -35,12 +35,15 @@ export interface AnalyzeOptions {
   checkInsertColumns: boolean;
 }
 
+type TempColumnRegistry = Map<string, string[]>;
+
 export function analyze(ast: BatchNode, options: AnalyzeOptions): Warning[] {
   const warnings: Warning[] = [];
+  const registry: TempColumnRegistry = new Map();
 
   for (const batch of ast.batches) {
     for (const stmt of batch.statements) {
-      walkStatement(stmt, options, warnings, new Set<string>());
+      walkStatement(stmt, options, warnings, new Set<string>(), registry);
     }
   }
 
@@ -96,6 +99,7 @@ function walkStatement(
   options: AnalyzeOptions,
   warnings: Warning[],
   cteNames: Set<string>,
+  registry: TempColumnRegistry,
 ): void {
   if (!node) return;
 
@@ -106,9 +110,9 @@ function walkStatement(
       for (const c of cte.ctes) {
         names.add(c.name.value.toUpperCase());
         // Walk inside the CTE query itself (it can reference earlier CTEs)
-        walkStatement(c.query, options, warnings, names);
+        walkStatement(c.query, options, warnings, names, registry);
       }
-      walkStatement(cte.statement, options, warnings, names);
+      walkStatement(cte.statement, options, warnings, names, registry);
       break;
     }
 
@@ -116,18 +120,18 @@ function walkStatement(
       const sel = node as SelectNode;
       if (sel.from) {
         checkTableReference(sel.from.source, options, warnings, cteNames, true);
-        walkSubquerySource(sel.from.source, options, warnings, cteNames);
+        walkSubquerySource(sel.from.source, options, warnings, cteNames, registry);
         for (const j of sel.from.joins) {
           checkTableReference(j.table, options, warnings, cteNames, true);
-          walkSubquerySource(j.table, options, warnings, cteNames);
+          walkSubquerySource(j.table, options, warnings, cteNames, registry);
         }
       }
       // Walk columns for subqueries
       for (const col of sel.columns) {
-        walkExpression(col, options, warnings, cteNames);
+        walkExpression(col, options, warnings, cteNames, registry);
       }
-      if (sel.where) walkExpression(sel.where.condition, options, warnings, cteNames);
-      if (sel.union) walkStatement(sel.union.select, options, warnings, cteNames);
+      if (sel.where) walkExpression(sel.where.condition, options, warnings, cteNames, registry);
+      if (sel.union) walkStatement(sel.union.select, options, warnings, cteNames, registry);
       break;
     }
 
@@ -135,9 +139,9 @@ function walkStatement(
       const ins = node as InsertNode;
       checkTableReference(ins.target, options, warnings, cteNames, false);
       if (options.checkInsertColumns) {
-        checkInsertColumnMapping(ins, warnings);
+        checkInsertColumnMapping(ins, registry, warnings);
       }
-      if (ins.select) walkStatement(ins.select, options, warnings, cteNames);
+      if (ins.select) walkStatement(ins.select, options, warnings, cteNames, registry);
       break;
     }
 
@@ -146,20 +150,20 @@ function walkStatement(
       checkTableReference(upd.target, options, warnings, cteNames, false);
       if (upd.from) {
         checkTableReference(upd.from.source, options, warnings, cteNames, true);
-        walkSubquerySource(upd.from.source, options, warnings, cteNames);
+        walkSubquerySource(upd.from.source, options, warnings, cteNames, registry);
         for (const j of upd.from.joins) {
           checkTableReference(j.table, options, warnings, cteNames, true);
-          walkSubquerySource(j.table, options, warnings, cteNames);
+          walkSubquerySource(j.table, options, warnings, cteNames, registry);
         }
       }
-      if (upd.where) walkExpression(upd.where.condition, options, warnings, cteNames);
+      if (upd.where) walkExpression(upd.where.condition, options, warnings, cteNames, registry);
       break;
     }
 
     case 'delete': {
       const del = node as DeleteNode;
       checkTableReference(del.target, options, warnings, cteNames, false);
-      if (del.where) walkExpression(del.where.condition, options, warnings, cteNames);
+      if (del.where) walkExpression(del.where.condition, options, warnings, cteNames, registry);
       break;
     }
 
@@ -175,34 +179,45 @@ function walkStatement(
     case 'beginEnd': {
       const begin = node as BeginEndNode;
       for (const s of begin.statements) {
-        walkStatement(s, options, warnings, cteNames);
+        walkStatement(s, options, warnings, cteNames, registry);
       }
       break;
     }
 
     case 'ifElse': {
       const ifElse = node as IfElseNode;
-      walkStatement(ifElse.thenStatement, options, warnings, cteNames);
+      walkStatement(ifElse.thenStatement, options, warnings, cteNames, registry);
       if (ifElse.elseClause) {
-        walkStatement(ifElse.elseClause.statement, options, warnings, cteNames);
+        walkStatement(ifElse.elseClause.statement, options, warnings, cteNames, registry);
       }
       break;
     }
 
     case 'createTable': {
       const ct = node as CreateTableNode;
-      if (options.warnMissingNullability && isTempOrVariable(ct.name as IdentifierNode)) {
-        checkMissingNullability(getIdentifierName(ct.name as IdentifierNode), ct.columns, warnings);
+      if (ct.name.type === 'identifier') {
+        const id = ct.name as IdentifierNode;
+        if (isTempOrVariable(id)) {
+          if (options.warnMissingNullability) {
+            checkMissingNullability(getIdentifierName(id), ct.columns, warnings);
+          }
+          if (options.checkInsertColumns) {
+            registry.set(normalizeTableKey(getIdentifierName(id)), extractColumnNames(ct.columns));
+          }
+        }
       }
       break;
     }
 
     case 'declare': {
       const decl = node as DeclareNode;
-      if (options.warnMissingNullability) {
-        for (const v of decl.variables) {
-          if (v.tableColumns) {
+      for (const v of decl.variables) {
+        if (v.tableColumns) {
+          if (options.warnMissingNullability) {
             checkMissingNullability(v.name.value, v.tableColumns, warnings);
+          }
+          if (options.checkInsertColumns) {
+            registry.set(normalizeTableKey(v.name.value), extractColumnNames(v.tableColumns));
           }
         }
       }
@@ -214,7 +229,9 @@ function walkStatement(
       if (options.warnMissingNocount) {
         checkMissingNocount(proc, warnings);
       }
-      walkStatement(proc.body, options, warnings, cteNames);
+      // Procedure body is its own scope — temp tables defined inside must
+      // not leak to the outer batch (the body is not executed inline).
+      walkStatement(proc.body, options, warnings, cteNames, new Map());
       break;
     }
   }
@@ -225,11 +242,12 @@ function walkSubquerySource(
   options: AnalyzeOptions,
   warnings: Warning[],
   cteNames: Set<string>,
+  registry: TempColumnRegistry,
 ): void {
   if (node.type === 'parenGroup') {
     const pg = node as ParenGroupNode;
     for (const inner of pg.inner) {
-      walkStatement(inner, options, warnings, cteNames);
+      walkStatement(inner, options, warnings, cteNames, registry);
     }
   }
 }
@@ -239,31 +257,32 @@ function walkExpression(
   options: AnalyzeOptions,
   warnings: Warning[],
   cteNames: Set<string>,
+  registry: TempColumnRegistry,
 ): void {
   if (!node) return;
 
   if (node.type === 'parenGroup') {
     const pg = node as ParenGroupNode;
     for (const inner of pg.inner) {
-      walkStatement(inner, options, warnings, cteNames);
+      walkStatement(inner, options, warnings, cteNames, registry);
     }
   } else if (node.type === 'expression') {
     const expr = node as import('./ast').ExpressionNode;
-    walkExpression(expr.left, options, warnings, cteNames);
-    walkExpression(expr.right, options, warnings, cteNames);
+    walkExpression(expr.left, options, warnings, cteNames, registry);
+    walkExpression(expr.right, options, warnings, cteNames, registry);
   } else if (node.type === 'exists') {
     const ex = node as import('./ast').ExistsNode;
-    walkExpression(ex.subquery, options, warnings, cteNames);
+    walkExpression(ex.subquery, options, warnings, cteNames, registry);
   } else if (node.type === 'functionCall') {
     const fn = node as import('./ast').FunctionCallNode;
     for (const arg of fn.args) {
-      walkExpression(arg, options, warnings, cteNames);
+      walkExpression(arg, options, warnings, cteNames, registry);
     }
   } else if (node.type === 'inExpression') {
     const inExpr = node as import('./ast').InExpressionNode;
-    walkExpression(inExpr.expression, options, warnings, cteNames);
+    walkExpression(inExpr.expression, options, warnings, cteNames, registry);
     for (const v of inExpr.values) {
-      walkExpression(v, options, warnings, cteNames);
+      walkExpression(v, options, warnings, cteNames, registry);
     }
   }
 }
@@ -354,11 +373,45 @@ function getTargetColumnName(node: SqlNode): string | undefined {
   return normalizeColumnName(id.parts[id.parts.length - 1]);
 }
 
-function checkInsertColumnMapping(ins: InsertNode, warnings: Warning[]): void {
-  if (!ins.columns || ins.columns.length === 0) return;
+function normalizeTableKey(name: string): string {
+  let v = name;
+  if (v.startsWith('[') && v.endsWith(']')) v = v.slice(1, -1);
+  return v.toUpperCase();
+}
+
+function extractColumnNames(cols: (ColumnDefNode | ConstraintNode)[]): string[] {
+  const out: string[] = [];
+  for (const c of cols) {
+    if (c.type !== 'columnDef') continue;
+    const name = normalizeColumnName((c as ColumnDefNode).name);
+    if (name) out.push(name);
+  }
+  return out;
+}
+
+function getInsertTargetNames(
+  ins: InsertNode,
+  registry: TempColumnRegistry,
+): string[] | undefined {
+  if (ins.columns && ins.columns.length > 0) {
+    return ins.columns.map(c => getTargetColumnName(c) ?? '?');
+  }
+  if (ins.target.type !== 'identifier') return undefined;
+  const id = ins.target as IdentifierNode;
+  if (!isTempOrVariable(id)) return undefined;
+  return registry.get(normalizeTableKey(getIdentifierName(id)));
+}
+
+function checkInsertColumnMapping(
+  ins: InsertNode,
+  registry: TempColumnRegistry,
+  warnings: Warning[],
+): void {
   if (!ins.select) return;
 
-  const targets = ins.columns;
+  const targetNames = getInsertTargetNames(ins, registry);
+  if (!targetNames || targetNames.length === 0) return;
+
   const sources = ins.select.columns;
   const line = ins.insertToken?.line;
   const tableName =
@@ -366,7 +419,7 @@ function checkInsertColumnMapping(ins: InsertNode, warnings: Warning[]): void {
       ? getIdentifierName(ins.target as IdentifierNode)
       : 'target';
 
-  const n = Math.max(targets.length, sources.length);
+  const n = Math.max(targetNames.length, sources.length);
   const sourceLabels: string[] = [];
   for (let i = 0; i < n; i++) {
     if (i < sources.length) {
@@ -382,19 +435,19 @@ function checkInsertColumnMapping(ins: InsertNode, warnings: Warning[]): void {
 
   for (let i = 0; i < n; i++) {
     const src = sourceLabels[i];
-    const tgt = i < targets.length ? (getTargetColumnName(targets[i]) ?? '?') : '(no target)';
+    const tgt = i < targetNames.length ? targetNames[i] : '(no target)';
     const srcRaw = i < sources.length ? getSourceItemName(sources[i]) : undefined;
     const isMismatch =
-      i >= targets.length ||
+      i >= targetNames.length ||
       i >= sources.length ||
       srcRaw === undefined ||
       srcRaw.toLowerCase() !== tgt.toLowerCase();
     lines.push(`  ${src.padEnd(pad)} -> ${tgt}${isMismatch ? '   [MISMATCH]' : ''}`);
   }
 
-  if (targets.length !== sources.length) {
+  if (targetNames.length !== sources.length) {
     lines.push(
-      `  Warning: INSERT has ${targets.length} target column(s) but SELECT has ${sources.length} item(s).`
+      `  Warning: INSERT has ${targetNames.length} target column(s) but SELECT has ${sources.length} item(s).`
     );
   }
 
