@@ -1814,18 +1814,13 @@ class Parser {
       return { type: 'literal', token: this.advance() } as LiteralNode;
     }
 
-    // Quoted identifier
-    if (this.isType(TokenType.QuotedIdentifier)) {
-      return this.parseQualifiedName();
-    }
-
     // Wildcard: *
     if (this.isType(TokenType.Operator) && this.current().value === '*') {
       return { type: 'literal', token: this.advance() } as LiteralNode;
     }
 
-    // Word: identifier, function call, or qualified name
-    if (this.isWord()) {
+    // Word or quoted identifier: identifier, function call, or qualified name
+    if (this.isWord() || this.isType(TokenType.QuotedIdentifier)) {
       const name = this.parseQualifiedName();
       // Function call?
       if (this.isType(TokenType.LeftParen) && name.type === 'identifier') {

@@ -172,3 +172,20 @@ describe('EXEC identifier enclosure', () => {
     expect(result).toContain("@p1 = 'val1'");
   });
 });
+
+describe('bracketed UDF function calls', () => {
+  it('formats bracketed UDF call inside TRY_PARSE', () => {
+    const result = formatSQL('SET @var = TRY_PARSE([dbo].[clean_number](@var_number) AS NUMERIC(28,15));');
+    expect(result.trim()).toBe('SET @var = TRY_PARSE([dbo].[clean_number](@var_number) AS NUMERIC(28, 15));');
+  });
+
+  it('formats bracketed UDF call as a top-level SELECT expression', () => {
+    const result = formatSQL('SELECT [dbo].[clean_number](@x) AS y');
+    expect(result).toContain('[dbo].[clean_number](@x)');
+  });
+
+  it('formats bracketed UDF call nested inside another bracketed UDF call', () => {
+    const result = formatSQL('SELECT [dbo].[outer_fn]([dbo].[inner_fn](@x), 1) AS y');
+    expect(result).toContain('[dbo].[outer_fn]([dbo].[inner_fn](@x), 1)');
+  });
+});
