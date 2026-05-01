@@ -386,4 +386,110 @@ END`;
       expect(warnings).toHaveLength(0);
     });
   });
+
+  describe('insert column mapping with temp-table inference', () => {
+    it('infers target columns from earlier CREATE TABLE #t', () => {
+      const sql = `CREATE TABLE #t (col1 INT, col2 INT, col3 INT);
+INSERT INTO #t SELECT col1, col2, col3 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      const m = warnings[0].message;
+      expect(m).toContain('INSERT into #t');
+      expect(m).toContain('col1 -> col1');
+      expect(m).toContain('col2 -> col2');
+      expect(m).toContain('col3 -> col3');
+      expect(m).not.toContain('[MISMATCH]');
+    });
+
+    it('flags swapped columns when inferred from CREATE TABLE #t', () => {
+      const sql = `CREATE TABLE #t (col1 INT, col2 INT, col3 INT);
+INSERT INTO #t SELECT col1, 'x' AS col3, 'x' AS col2 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      const m = warnings[0].message;
+      expect(m).toContain('col3 -> col2   [MISMATCH]');
+      expect(m).toContain('col2 -> col3   [MISMATCH]');
+      const mismatches = m.match(/\[MISMATCH\]/g);
+      expect(mismatches).toHaveLength(2);
+    });
+
+    it('infers target columns from earlier DECLARE @t TABLE', () => {
+      const sql = `DECLARE @t TABLE (col1 INT, col2 INT);
+INSERT INTO @t SELECT col2, col1 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      const m = warnings[0].message;
+      expect(m).toContain('INSERT into @t');
+      expect(m).toContain('col2 -> col1   [MISMATCH]');
+      expect(m).toContain('col1 -> col2   [MISMATCH]');
+    });
+
+    it('stays silent when no prior temp-table definition exists', () => {
+      const sql = `INSERT INTO #t SELECT col1, col2 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(0);
+    });
+
+    it('uses most recent definition when temp table is re-CREATE-d', () => {
+      const sql = `CREATE TABLE #t (a INT, b INT);
+DROP TABLE #t;
+CREATE TABLE #t (col1 INT, col2 INT);
+INSERT INTO #t SELECT col1, col2 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      const m = warnings[0].message;
+      expect(m).toContain('col1 -> col1');
+      expect(m).toContain('col2 -> col2');
+      expect(m).not.toContain('[MISMATCH]');
+    });
+
+    it('matches bracketed insert target [#t] against #t definition', () => {
+      const sql = `CREATE TABLE #t (col1 INT, col2 INT);
+INSERT INTO [#t] SELECT col1, col2 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).not.toContain('[MISMATCH]');
+    });
+
+    it('does not leak definitions from CREATE PROCEDURE body to outer batch', () => {
+      const sql = `CREATE PROCEDURE p AS
+BEGIN
+  CREATE TABLE #t (col1 INT, col2 INT);
+END;
+INSERT INTO #t SELECT col1, col2 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(0);
+    });
+
+    it('detects mismatch inside CREATE PROCEDURE body using locally defined #t', () => {
+      const sql = `CREATE PROCEDURE p AS
+BEGIN
+  CREATE TABLE #t (col1 INT, col2 INT);
+  INSERT INTO #t SELECT col2, col1 FROM src;
+END`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      const mismatches = warnings[0].message.match(/\[MISMATCH\]/g);
+      expect(mismatches).toHaveLength(2);
+    });
+
+    it('does not infer for non-temp table without column list', () => {
+      const sql = `CREATE TABLE dbo.t (col1 INT, col2 INT);
+INSERT INTO dbo.t SELECT col2, col1 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(0);
+    });
+
+    it('ignores constraint rows when extracting column names', () => {
+      const sql = `CREATE TABLE #t (col1 INT, col2 INT, PRIMARY KEY (col1));
+INSERT INTO #t SELECT col1, col2 FROM src`;
+      const warnings = getWarnings(sql, { checkInsertColumns: true });
+      expect(warnings).toHaveLength(1);
+      const m = warnings[0].message;
+      expect(m).toContain('col1 -> col1');
+      expect(m).toContain('col2 -> col2');
+      expect(m).not.toContain('[MISMATCH]');
+      expect(m).not.toContain('PRIMARY');
+    });
+  });
 });
