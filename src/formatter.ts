@@ -1465,11 +1465,15 @@ class Formatter {
       const onPrefix = this.kw('ON') + ' ';
       const savedIndent = this.indent;
       this.indent = bi + 2;
-      const condStr = this.formatNode(node.on.condition);
+      // If the condition contains comments, skip the speculative inline build:
+      // formatNode would emit (and mark as emitted) those comments, so a
+      // subsequent re-format on the wrap path would silently drop them.
+      const hasComments = this.nodeHasComments(node.on.condition);
+      const condStr = hasComments ? '' : this.formatNode(node.on.condition);
       this.indent = savedIndent;
       const onLine = onIndent + onPrefix + condStr;
 
-      if (this.config.whitespace.wrapLongLines && onLine.length > this.config.whitespace.wrapLinesLongerThan) {
+      if (this.config.whitespace.wrapLongLines && (hasComments || onLine.length > this.config.whitespace.wrapLinesLongerThan)) {
         const condFormatted = this.config.operators.comparison.align
           ? this.formatConditionAligned(node.on.condition, bi + 2, onPrefix.length)
           : this.formatCondition(node.on.condition, bi + 2);

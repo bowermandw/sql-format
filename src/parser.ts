@@ -83,6 +83,15 @@ class Parser {
       next._commaComment = comma.trailingComment;
       comma.trailingComment = undefined;
     }
+    // Leading comments on the comma (e.g. comments on lines before a leading-
+    // comma list item) are transferred to the next token so they appear as
+    // leading comments on the following list item.
+    if (comma.leadingComments?.length) {
+      const next = this.current();
+      if (!next.leadingComments) next.leadingComments = [];
+      next.leadingComments.unshift(...comma.leadingComments);
+      comma.leadingComments = undefined;
+    }
     return comma;
   }
 
