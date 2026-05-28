@@ -2806,6 +2806,15 @@ class Formatter {
   private formatInExpression(node: InExpressionNode): string {
     const expr = this.formatNode(node.expression);
     const notStr = node.notToken ? this.kw('NOT') + ' ' : '';
+
+    // Subquery: IN (SELECT ...) — format as a subquery, not a value list.
+    // The value-list placement settings (placeFirstValueOnNewLine etc.) treat
+    // each value as a flat string and prepend indentation, which double-indents
+    // an already-indented SELECT and bypasses the collapseShortSubqueries logic.
+    if (node.values.length === 1 && node.values[0].type === 'select') {
+      return this.formatInSubquery(node, expr, notStr);
+    }
+
     const formattedValues = node.values.map(v => this.formatNode(v));
     const space = this.config.operators.in.addSpaceAroundInContents ? ' ' : '';
 
@@ -2948,6 +2957,46 @@ class Formatter {
     }
 
     return result;
+  }
+
+  /**
+   * Format `expr IN (SELECT ...)` as a subquery, mirroring the subquery branch
+   * of formatParenGroup: try collapsing a short subquery, otherwise expand the
+   * inner SELECT at indent + 1. Honors operators.in.placeOpeningParenthesisOnNewLine
+   * for the opening paren position.
+   */
+  private formatInSubquery(node: InExpressionNode, expr: string, notStr: string): string {
+    const inConfig = this.config.operators.in;
+    const dml = this.config.dml;
+    const innerSelect = node.values[0] as SelectNode;
+    const prefix = `${expr} ${notStr}${this.kw('IN')}`;
+    const outerIndent = this.indentStr(this.indent);
+
+    const hasInnerComments = !!innerSelect.selectToken?.leadingComments?.length || this.nodeHasComments(innerSelect);
+
+    // Try collapsing a short subquery onto one line.
+    if (dml.collapseShortSubqueries && !hasInnerComments) {
+      const saved = this.saveEmittedComments();
+      const collapsed = this.collapseSelect(innerSelect);
+      if (('(' + collapsed + ')').length <= dml.collapseSubqueriesShorterThan) {
+        return `${prefix} (${collapsed})`;
+      }
+      this.restoreEmittedComments(saved);
+    }
+
+    // Expanded: format the inner SELECT at indent + 1 using subquery collapse settings.
+    const savedCollapse = dml.collapseShortStatements;
+    const savedThreshold = dml.collapseStatementsShorterThan;
+    (this.config.dml as any).collapseShortStatements = dml.collapseShortSubqueries;
+    (this.config.dml as any).collapseStatementsShorterThan = dml.collapseSubqueriesShorterThan;
+    const innerFormatted = this.formatNode(innerSelect, this.indent + 1);
+    (this.config.dml as any).collapseShortStatements = savedCollapse;
+    (this.config.dml as any).collapseStatementsShorterThan = savedThreshold;
+
+    const open = inConfig.placeOpeningParenthesisOnNewLine
+      ? `${prefix}\n${outerIndent}(`
+      : `${prefix} (`;
+    return `${open}\n${innerFormatted}\n${outerIndent})`;
   }
 
   // --- BETWEEN ---
