@@ -1563,8 +1563,13 @@ class Formatter {
       if (innerNode.type === 'expression') {
         const expr = innerNode as ExpressionNode;
         if (COMPARISON_OPS.includes(expr.operator.value)) {
+          // Format operands at the condition's indent level so nested
+          // constructs that wrap (e.g. a long function call) indent correctly.
+          const prevIndent = this.indent;
+          this.indent = indentLevel;
           const left = this.maybeParenthesize(expr.left, this.formatNode(expr.left));
           const right = this.maybeParenthesize(expr.right, this.formatNode(expr.right));
+          this.indent = prevIndent;
           const op = this.tokenValueWithComments(expr.operator);
           let leftStr = left;
           let rightStr = op + ' ' + right;
@@ -1589,10 +1594,14 @@ class Formatter {
     // expressions so that the comparison operators align vertically.
     // The first item uses initialPrefixWidth (e.g. width of "ON ") while
     // subsequent items use their logical operator prefix width (e.g. "AND ").
+    // A multi-line left-hand side (e.g. a wrapped function call) is excluded:
+    // its raw string length spans several lines, so it must neither set the
+    // alignment column nor be padded to it — that would fling the operator far
+    // to the right. Such operators simply follow their last line directly.
     let maxTotalWidth = 0;
     for (let i = 0; i < formattedItems.length; i++) {
       const item = formattedItems[i];
-      if (item.isComparison) {
+      if (item.isComparison && !item.left.includes('\n')) {
         const prefixWidth = i === 0 ? initialPrefixWidth : (item.logicalOp ? item.logicalOp.length + 1 : 0);
         const totalWidth = prefixWidth + item.left.length;
         if (totalWidth > maxTotalWidth) {
@@ -1611,9 +1620,14 @@ class Formatter {
         result += '\n' + (item.opComments ? item.opComments : '') + indent + this.kw(item.logicalOp) + ' ';
       }
       if (item.isComparison) {
-        const targetLeftWidth = maxTotalWidth - prefixWidth;
-        const padded = item.left + ' '.repeat(Math.max(0, targetLeftWidth - item.left.length));
-        result += padded + ' ' + item.right;
+        if (item.left.includes('\n')) {
+          // Multi-line left side: operator follows its last line directly.
+          result += item.left + ' ' + item.right;
+        } else {
+          const targetLeftWidth = maxTotalWidth - prefixWidth;
+          const padded = item.left + ' '.repeat(Math.max(0, targetLeftWidth - item.left.length));
+          result += padded + ' ' + item.right;
+        }
       } else {
         result += item.left;
       }
@@ -2621,7 +2635,7 @@ class Formatter {
         return lines.join('\n');
       });
       const closeCommentStr = this.formatCloseComments(node.closeComments, this.indent);
-      result = `${name} (\n${expanded.join('\n')}${closeCommentStr}\n${outerIndent})`;
+      result = `${name}(\n${expanded.join('\n')}${closeCommentStr}\n${outerIndent})`;
     } else {
       result = inline;
     }

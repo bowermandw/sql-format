@@ -1425,7 +1425,7 @@ describe('UNION / EXCEPT / INTERSECT', () => {
       dml: { collapseShortStatements: false },
     });
     // The function args should be expanded across multiple lines
-    expect(result).toContain('STRING_AGG (\n');
+    expect(result).toContain('STRING_AGG(\n');
     expect(result).toContain('WITHIN GROUP (ORDER BY');
     // Every line should be within the wrap limit
     for (const line of result.split('\n')) {
