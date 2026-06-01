@@ -215,4 +215,21 @@ describe('operators.comparison.align', () => {
     // (the left-hand sides have different widths)
     expect(eqPositions[0] !== eqPositions[2] || eqPositions[1] !== eqPositions[2]).toBe(true);
   });
+
+  it('does not fling the operator right when a wrapped function call is the left side', () => {
+    const sql = "SELECT CASE WHEN COALESCE(t2.some_considerably_longer_column_name_here, t3.another_quite_long_column_name, '') = 'asdf' AND t.column3 = 'asdf asdf' THEN 'x' ELSE 'y' END AS c FROM t";
+    const result = formatSQL(sql, {
+      ...alignOn,
+      whitespace: { wrapLongLines: true, wrapLinesLongerThan: 60 },
+    });
+    const lines = result.split('\n');
+    // The COALESCE must wrap with no space before the paren and its args
+    // indented beneath the call.
+    expect(result).toContain('COALESCE(\n');
+    expect(result).not.toContain('COALESCE (\n');
+    // The short condition's operator must not be padded out to align with the
+    // multi-line COALESCE — it sits one space after its own left side.
+    const andLine = lines.find(l => /\bAND\b/.test(l) && l.includes('column3'))!;
+    expect(andLine).toContain('t.column3 = ');
+  });
 });
