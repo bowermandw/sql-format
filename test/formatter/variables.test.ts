@@ -139,3 +139,17 @@ describe('SET special forms', () => {
     expect(result).not.toContain('[');
   });
 });
+
+// ---- non-standard variable names split by the lexer ----
+
+describe('non-standard variable names', () => {
+  it('preserves a hyphen/number-split name in DECLARE', () => {
+    const result = formatSQL('DECLARE @AS-2_OH VARCHAR(30)');
+    expect(result).toContain('DECLARE @AS-2_OH VARCHAR(30)');
+  });
+
+  it('preserves the name as a SET assignment target', () => {
+    const result = formatSQL('SET @AS-2_OH = 5');
+    expect(result).toContain('SET @AS-2_OH = 5');
+  });
+});

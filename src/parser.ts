@@ -407,20 +407,27 @@ class Parser {
   }
 
   /** Read an identifier in a "name position" (a procedure parameter or a
-   *  column-definition name). The lexer always splits a hyphen out as a
-   *  subtraction operator and a parenthesis out as its own token, so an odd
-   *  name like `@A1_Param_-_Name_Total` or `@variable_(words_-_xx)` arrives
-   *  as several tokens. T-SQL has no hyphen or parenthesis in a legal
-   *  identifier, but some generated/legacy code uses them; in a name
-   *  position there is no expression to confuse it with, so we re-join the
-   *  pieces — but only when they are physically adjacent (no surrounding
-   *  whitespace), so a spaced `@x - y` or a real datatype `@x VARCHAR(30)`
-   *  is left alone. */
+   *  column-definition name). The lexer splits an odd name into several
+   *  tokens: a hyphen becomes a subtraction operator, a parenthesis its own
+   *  token, and a number literal stops at `_`/letters — so `@AS-2_OH` arrives
+   *  as `@AS`, `-`, `2`, `_OH` and `@variable_(words_-_xx)` as many tokens.
+   *  T-SQL has no hyphen or parenthesis in a legal identifier, but some
+   *  generated/legacy code uses them; in a name position there is no
+   *  expression to confuse it with, so we re-join the pieces — but only when
+   *  they are physically adjacent (no surrounding whitespace), so a spaced
+   *  `@x - y` or a real datatype `@x VARCHAR(30)` is left alone. */
   private parseNamePosition(): Token {
     let combined = this.advance();
     for (;;) {
       const cur = this.current();
       if (!this.adjacent(combined, cur)) break;
+      // Word/number fragment glued on by a lexer split, e.g. the `_OH` in
+      // `2_OH` (a number literal stops before `_`).
+      if (cur.type === TokenType.Word || cur.type === TokenType.NumberLiteral) {
+        const next = this.advance();
+        combined = this.extendName(combined, next.value, next);
+        continue;
+      }
       // Hyphen glued between word/number pieces: @A1_Param_-_Name_Total
       if (
         cur.type === TokenType.Operator && cur.value === '-' &&
@@ -440,6 +447,51 @@ class Parser {
       break;
     }
     return combined;
+  }
+
+  /** Like parseQualifiedName(), but reads each dot-separated part as a name
+   *  position so odd names survive (e.g. a `SET @AS-2_OH = ...` target). Used
+   *  only in name contexts — never in expressions, where `-` must stay
+   *  subtraction. */
+  private parseQualifiedNamePosition(): IdentifierNode {
+    const parts: Token[] = [];
+    if (this.isWord() || this.isType(TokenType.QuotedIdentifier)) {
+      parts.push(this.parseNamePosition());
+    }
+    while (this.isType(TokenType.Dot)) {
+      this.advance(); // .
+      if (this.isType(TokenType.Operator) && this.current().value === '*') {
+        parts.push(this.advance());
+      } else if (this.isWord() || this.isType(TokenType.QuotedIdentifier)) {
+        parts.push(this.parseNamePosition());
+      }
+    }
+    return { type: 'identifier', parts };
+  }
+
+  /** Peek-only test for an expression-position identifier: does the maximal
+   *  physically-adjacent run of name-ish tokens (`Word`, `NumberLiteral`, `-`)
+   *  starting at the current token contain a `NumberLiteral` immediately
+   *  followed by an adjacent `Word`? That `2_OH`-style boundary can never be
+   *  valid arithmetic, so it reliably marks a single odd identifier — letting
+   *  us rejoin `@AS-2_OH` while leaving `@x-@y` / `@x-5` as subtraction. */
+  private runHasNumberWordArtifact(): boolean {
+    let prev = this.current();
+    if (prev.type !== TokenType.Word && prev.type !== TokenType.QuotedIdentifier) return false;
+    let i = 1;
+    for (;;) {
+      const tok = this.peek(i);
+      if (!this.adjacent(prev, tok)) break;
+      const isNameish =
+        tok.type === TokenType.Word ||
+        tok.type === TokenType.NumberLiteral ||
+        (tok.type === TokenType.Operator && tok.value === '-');
+      if (!isNameish) break;
+      if (prev.type === TokenType.NumberLiteral && tok.type === TokenType.Word) return true;
+      prev = tok;
+      i++;
+    }
+    return false;
   }
 
   /** Append text to a name token, carrying the trailing comments of the last
@@ -813,7 +865,7 @@ class Parser {
     // Check for alias: AS name, or just a bare name
     if (this.isWord('AS')) {
       const asToken = this.advance();
-      const aliasName = this.advance();
+      const aliasName = this.parseNamePosition();
       if (expr.type === 'identifier') {
         return { ...expr, alias: { asToken, name: aliasName } };
       }
@@ -829,7 +881,7 @@ class Parser {
 
     // Bare alias (no AS keyword): only if next token is a word and not a keyword
     if (this.isWord() && !this.isClauseKeyword() && !this.isType(TokenType.Comma)) {
-      const name = this.advance();
+      const name = this.parseNamePosition();
       if (expr.type === 'identifier') {
         return { ...expr, alias: { name } };
       }
@@ -1391,7 +1443,7 @@ class Parser {
     const variables: DeclareNode['variables'] = [];
 
     const parseVar = () => {
-      const name = this.advance(); // @var
+      const name = this.parseNamePosition(); // @var
       let asToken: Token | undefined;
       if (this.isWord('AS')) {
         asToken = this.advance();
@@ -1489,14 +1541,14 @@ class Parser {
     // SET IDENTITY_INSERT schema.table ON/OFF — table is a qualified name
     if (setOption === 'IDENTITY_INSERT') {
       const target: SqlNode = { type: 'identifier', parts: [this.advance()] } as IdentifierNode;
-      const tableName = this.parseQualifiedName();
+      const tableName = this.parseQualifiedNamePosition();
       const onOff: SqlNode = this.isWord() ?
         { type: 'identifier', parts: [this.advance()] } as IdentifierNode :
         this.parseExpression();
       return { type: 'set', token, target, value: onOff, isSpecial: true, tableName } as any;
     }
 
-    const target = this.parseQualifiedName();
+    const target = this.parseQualifiedNamePosition();
     if (this.isType(TokenType.Equals)) {
       this.advance();
     }
@@ -1913,6 +1965,12 @@ class Parser {
 
     // Word or quoted identifier: identifier, function call, or qualified name
     if (this.isWord() || this.isType(TokenType.QuotedIdentifier)) {
+      // Odd identifier the lexer split apart, e.g. @AS-2_OH → @AS, -, 2, _OH.
+      // Only rejoin when the adjacent run carries a number→word artifact that
+      // can never be valid arithmetic, so @x-@y / @x-5 stay subtraction.
+      if (this.runHasNumberWordArtifact()) {
+        return { type: 'identifier', parts: [this.parseNamePosition()] } as IdentifierNode;
+      }
       const name = this.parseQualifiedName();
       // Function call?
       if (this.isType(TokenType.LeftParen) && name.type === 'identifier') {
@@ -2235,10 +2293,10 @@ class Parser {
     if (this.isWord('INTO')) {
       const intoToken = this.advance();
       const variables: SqlNode[] = [];
-      variables.push({ type: 'identifier', parts: [this.advance()] } as IdentifierNode);
+      variables.push({ type: 'identifier', parts: [this.parseNamePosition()] } as IdentifierNode);
       while (this.isType(TokenType.Comma)) {
         this.advanceComma();
-        variables.push({ type: 'identifier', parts: [this.advance()] } as IdentifierNode);
+        variables.push({ type: 'identifier', parts: [this.parseNamePosition()] } as IdentifierNode);
       }
       into = { token: intoToken, variables };
     }

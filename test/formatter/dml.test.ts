@@ -196,3 +196,26 @@ describe('dml.collapseShortSubqueries', () => {
     expect(result).toContain('(SELECT id FROM u) b');
   });
 });
+
+// ---- non-standard variable names read inside expressions ----
+
+describe('non-standard variable names in expressions', () => {
+  it('rejoins a number/word-split variable used as a SELECT alias target', () => {
+    const result = formatSQL('SELECT @AS-2_OH AS x');
+    expect(result).toContain('@AS-2_OH');
+    expect(result).not.toContain('@AS -');
+  });
+
+  it('rejoins a number/word-split variable used in a WHERE condition', () => {
+    const result = formatSQL('SELECT 1 WHERE col = @AS-2_OH');
+    expect(result).toContain('= @AS-2_OH');
+  });
+
+  it('still treats genuine hyphen arithmetic as subtraction', () => {
+    const result = formatSQL('SELECT a-b, @x-@y, @x-5 FROM t WHERE c-1 > 0');
+    expect(result).toContain('a - b');
+    expect(result).toContain('@x - @y');
+    expect(result).toContain('@x - 5');
+    expect(result).toContain('c - 1');
+  });
+});

@@ -352,4 +352,9 @@ describe('hyphenated identifiers in name positions', () => {
     expect(result).toContain('@x VARCHAR(30)');
     expect(result).toContain('@y INT');
   });
+
+  it('preserves a parameter name split across a number/word boundary', () => {
+    const result = formatSQL('CREATE PROCEDURE dbo.Test\n  @AS-2_OH VARCHAR (30) = NULL\nAS BEGIN SELECT 1 END');
+    expect(result).toContain('@AS-2_OH VARCHAR(30) = NULL');
+  });
 });
