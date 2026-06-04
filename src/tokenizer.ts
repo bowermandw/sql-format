@@ -208,17 +208,32 @@ export function tokenize(input: string): Token[] {
     }
     if (ch === '*') {
       advance();
-      tokens.push(makeToken(TokenType.Operator, '*', startOffset, startLine, startCol));
+      if (peek() === '=') { advance(); tokens.push(makeToken(TokenType.Operator, '*=', startOffset, startLine, startCol)); }
+      else { tokens.push(makeToken(TokenType.Operator, '*', startOffset, startLine, startCol)); }
       continue;
     }
     if (ch === '/') {
       advance();
-      tokens.push(makeToken(TokenType.Operator, '/', startOffset, startLine, startCol));
+      if (peek() === '=') { advance(); tokens.push(makeToken(TokenType.Operator, '/=', startOffset, startLine, startCol)); }
+      else { tokens.push(makeToken(TokenType.Operator, '/', startOffset, startLine, startCol)); }
       continue;
     }
     if (ch === '%') {
       advance();
-      tokens.push(makeToken(TokenType.Operator, '%', startOffset, startLine, startCol));
+      if (peek() === '=') { advance(); tokens.push(makeToken(TokenType.Operator, '%=', startOffset, startLine, startCol)); }
+      else { tokens.push(makeToken(TokenType.Operator, '%', startOffset, startLine, startCol)); }
+      continue;
+    }
+    // Bitwise operators: & | ^ (with compound assignment &= |= ^=) and ~
+    if (ch === '&' || ch === '|' || ch === '^') {
+      advance();
+      if (peek() === '=') { advance(); tokens.push(makeToken(TokenType.Operator, ch + '=', startOffset, startLine, startCol)); }
+      else { tokens.push(makeToken(TokenType.Operator, ch, startOffset, startLine, startCol)); }
+      continue;
+    }
+    if (ch === '~') {
+      advance();
+      tokens.push(makeToken(TokenType.Operator, '~', startOffset, startLine, startCol));
       continue;
     }
 

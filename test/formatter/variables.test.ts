@@ -162,4 +162,24 @@ describe('non-standard variable names', () => {
     const result = formatSQL('SET @XX/YY_ABC_DEF = 5');
     expect(result).toContain('SET @XX/YY_ABC_DEF = 5');
   });
+
+  it('preserves an ampersand in the name in DECLARE and SET', () => {
+    expect(formatSQL('DECLARE @XX_A&B_Word VARCHAR(30)')).toContain('DECLARE @XX_A&B_Word VARCHAR(30)');
+    expect(formatSQL('SET @XX_A&B_Word = 5')).toContain('SET @XX_A&B_Word = 5');
+  });
+});
+
+// ---- SET compound assignment operators ----
+
+describe('SET compound assignment', () => {
+  for (const op of ['+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=']) {
+    it(`preserves the ${op} operator`, () => {
+      const result = formatSQL(`SET @x ${op} 3`);
+      expect(result.trim()).toBe(`SET @x ${op} 3`);
+    });
+  }
+
+  it('still formats a plain = assignment', () => {
+    expect(formatSQL('SET @x = 3').trim()).toBe('SET @x = 3');
+  });
 });

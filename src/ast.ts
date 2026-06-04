@@ -197,6 +197,8 @@ export interface SetNode {
   token: Token;
   target: SqlNode;
   value: SqlNode;
+  /** The assignment operator: `=` (default) or a compound form like `+=`, `&=`. */
+  assignOp?: Token;
   /** For special forms like SET NOCOUNT ON */
   isSpecial?: boolean;
 }

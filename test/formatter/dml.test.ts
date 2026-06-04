@@ -231,4 +231,16 @@ describe('non-standard variable names in expressions', () => {
     expect(result).toContain('@XX/2YY');
     expect(result).not.toContain('@XX /');
   });
+
+  it('preserves bitwise operators that were previously dropped', () => {
+    const result = formatSQL('SELECT a & b, a | b, a ^ b, ~a FROM t');
+    expect(result).toContain('a & b');
+    expect(result).toContain('a | b');
+    expect(result).toContain('a ^ b');
+    expect(result).toContain('~a');
+  });
+
+  it('spaces an unspaced bitwise operator', () => {
+    expect(formatSQL('SELECT a&b FROM t')).toContain('a & b');
+  });
 });

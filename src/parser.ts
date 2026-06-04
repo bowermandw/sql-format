@@ -10,6 +10,15 @@ import {
   DeclareCursorNode, SetCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode,
 } from './ast';
 
+/** Operator characters that some generated/legacy code embeds in identifiers
+ *  (e.g. @A1_Param_-_Name_Total, @XX/YY_ABC_DEF, @XX_A&B_Word). They are only
+ *  re-joined into a name in "name positions" — never in expressions, where they
+ *  keep their arithmetic/bitwise meaning. */
+const NAME_JOINABLE_OPERATORS = ['-', '/', '&', '|', '^', '+', '*', '%'];
+
+/** Compound assignment operators usable as the operator in a SET statement. */
+const COMPOUND_ASSIGN_OPERATORS = ['+=', '-=', '*=', '/=', '%=', '&=', '|=', '^='];
+
 export function parse(tokens: Token[]): BatchNode {
   const parser = new Parser(tokens);
   return parser.parseBatch();
@@ -429,10 +438,10 @@ class Parser {
         combined = this.extendName(combined, next.value, next);
         continue;
       }
-      // Hyphen or slash glued between word/number pieces, e.g.
-      // @A1_Param_-_Name_Total or @XX/YY_ABC_DEF.
+      // An operator glued between word/number pieces, e.g.
+      // @A1_Param_-_Name_Total, @XX/YY_ABC_DEF or @XX_A&B_Word.
       if (
-        cur.type === TokenType.Operator && (cur.value === '-' || cur.value === '/') &&
+        cur.type === TokenType.Operator && NAME_JOINABLE_OPERATORS.includes(cur.value) &&
         this.adjacent(cur, this.peek(1)) &&
         (this.peek(1).type === TokenType.Word || this.peek(1).type === TokenType.NumberLiteral)
       ) {
@@ -487,7 +496,7 @@ class Parser {
       const isNameish =
         tok.type === TokenType.Word ||
         tok.type === TokenType.NumberLiteral ||
-        (tok.type === TokenType.Operator && (tok.value === '-' || tok.value === '/'));
+        (tok.type === TokenType.Operator && NAME_JOINABLE_OPERATORS.includes(tok.value));
       if (!isNameish) break;
       if (prev.type === TokenType.NumberLiteral && tok.type === TokenType.Word) return true;
       prev = tok;
@@ -1551,8 +1560,11 @@ class Parser {
     }
 
     const target = this.parseQualifiedNamePosition();
+    let assignOp: Token | undefined;
     if (this.isType(TokenType.Equals)) {
       this.advance();
+    } else if (this.isType(TokenType.Operator) && COMPOUND_ASSIGN_OPERATORS.includes(this.current().value)) {
+      assignOp = this.advance(); // +=, -=, *=, /=, %=, &=, |=, ^=
     }
 
     // SET @cursor_var = CURSOR ... FOR SELECT
@@ -1561,7 +1573,7 @@ class Parser {
     }
 
     const value = this.parseExpression();
-    return { type: 'set', token, target, value };
+    return { type: 'set', token, target, value, assignOp };
   }
 
   private parseUse(): UseNode {
@@ -1857,7 +1869,8 @@ class Parser {
 
   private parseAddSub(): SqlNode {
     let left = this.parseMulDiv();
-    while (this.isType(TokenType.Operator) && (this.current().value === '+' || this.current().value === '-')) {
+    // Additive and bitwise operators share this precedence tier in T-SQL.
+    while (this.isType(TokenType.Operator) && ['+', '-', '&', '|', '^'].includes(this.current().value)) {
       const op = this.advance();
       const right = this.parseMulDiv();
       left = { type: 'expression', left, operator: op, right } as ExpressionNode;
@@ -1876,7 +1889,7 @@ class Parser {
   }
 
   private parseUnary(): SqlNode {
-    if (this.isType(TokenType.Operator) && (this.current().value === '-' || this.current().value === '+')) {
+    if (this.isType(TokenType.Operator) && (this.current().value === '-' || this.current().value === '+' || this.current().value === '~')) {
       const op = this.advance();
       const expr = this.parseAtom();
       return { type: 'expression', left: { type: 'literal', token: { ...op, value: '' } } as LiteralNode, operator: op, right: expr } as ExpressionNode;

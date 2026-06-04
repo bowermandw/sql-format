@@ -2192,7 +2192,8 @@ class Formatter {
       s += ' ' + fmtSpecialIdent(node.value);
       return s;
     }
-    const prefix = indent + this.kw('SET') + ' ' + this.formatNode(node.target) + ' = ';
+    const assignOp = node.assignOp ? node.assignOp.value : '=';
+    const prefix = indent + this.kw('SET') + ' ' + this.formatNode(node.target) + ' ' + assignOp + ' ';
     const value = node.value.type === 'expression'
       ? this.wrapExpression(node.value, this.indent)
       : this.formatNode(node.value);
