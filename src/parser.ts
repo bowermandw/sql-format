@@ -517,6 +517,23 @@ class Parser {
     return next.type === TokenType.LeftParen && this.adjacent(cur, next);
   }
 
+  /** Peek-only test for an odd identifier in expression position: a `@`/`#`
+   *  variable glued with no whitespace to a name-joinable operator that is in
+   *  turn glued to a plain word, e.g. @XX&YY_Word. The right side must be a
+   *  bare word — a number (@x&5) or another variable (@x&@y) keeps its
+   *  arithmetic meaning, and any spacing (@x & col) leaves it as arithmetic. */
+  private varGluedToOperatorWord(): boolean {
+    const cur = this.current();
+    if (cur.type !== TokenType.Word) return false;
+    if (!cur.value.startsWith('@') && !cur.value.startsWith('#')) return false;
+    const op = this.peek(1);
+    if (op.type !== TokenType.Operator || !NAME_JOINABLE_OPERATORS.includes(op.value)) return false;
+    if (!this.adjacent(cur, op)) return false;
+    const rhs = this.peek(2);
+    if (rhs.type !== TokenType.Word || !this.adjacent(op, rhs)) return false;
+    return !rhs.value.startsWith('@') && !rhs.value.startsWith('#');
+  }
+
   /** Append text to a name token, carrying the trailing comments of the last
    *  consumed token forward onto the combined token. */
   private extendName(combined: Token, text: string, last: Token): Token {
@@ -1992,12 +2009,13 @@ class Parser {
 
     // Word or quoted identifier: identifier, function call, or qualified name
     if (this.isWord() || this.isType(TokenType.QuotedIdentifier)) {
-      // Odd identifier the lexer split apart. Rejoin only when it is
-      // unambiguous: either a number→word artifact (e.g. @AS-2_OH) that can
-      // never be valid arithmetic, or a @/# variable glued to a `(` (e.g.
-      // @variable_(abc_def)) — a variable is never a function call. Plain
-      // operator splits like @x-@y / @x-5 stay arithmetic.
-      if (this.runHasNumberWordArtifact() || this.varGluedToParen()) {
+      // Odd identifier the lexer split apart. Rejoin when it is unambiguous or
+      // matches the @/#-variable heuristic: a number→word artifact (e.g.
+      // @AS-2_OH); a variable glued to a `(` (e.g. @variable_(abc_def)) — a
+      // variable is never a function call; or a variable glued (no spaces) to
+      // an operator and a bare word (e.g. @XX&YY_Word). Spaced arithmetic and
+      // numeric/variable operands like @x & col / @x&5 / @x&@y stay arithmetic.
+      if (this.runHasNumberWordArtifact() || this.varGluedToParen() || this.varGluedToOperatorWord()) {
         return { type: 'identifier', parts: [this.parseNamePosition()] } as IdentifierNode;
       }
       const name = this.parseQualifiedName();

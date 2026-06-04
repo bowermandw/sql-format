@@ -271,4 +271,24 @@ describe('non-standard variable names in expressions', () => {
     const result = formatSQL('INSERT INTO dbo.t (c) VALUES (TRY_PARSE(NULLIF(@variable_([abc_def]), 0) AS INT))');
     expect(result).toContain('TRY_PARSE(NULLIF(@variable_([abc_def]), 0) AS INT)');
   });
+
+  it('rejoins an operator-name variable inside a function (@-variable heuristic)', () => {
+    const result = formatSQL("SELECT TRY_PARSE(NULLIF(@XX&YY_Word, '') AS INT) FROM t");
+    expect(result).toContain('NULLIF(@XX&YY_Word');
+    expect(result).not.toContain('@XX &');
+  });
+
+  it('rejoins slash and hyphen operator-names in expressions', () => {
+    const result = formatSQL('SELECT @XX/YY_ABC_DEF, @A1_Param_-_Name_Total FROM t');
+    expect(result).toContain('@XX/YY_ABC_DEF');
+    expect(result).toContain('@A1_Param_-_Name_Total');
+  });
+
+  it('leaves arithmetic with spaced or numeric/variable operands alone', () => {
+    const result = formatSQL('SELECT @x & col, @x & @y, @x&5, @x&@y, a&b FROM t');
+    expect(result).toContain('@x & col');
+    expect(result).toContain('@x & @y');
+    expect(result).toContain('@x & 5');
+    expect(result).toContain('a & b');
+  });
 });
