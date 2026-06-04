@@ -505,6 +505,18 @@ class Parser {
     return false;
   }
 
+  /** Peek-only test for an odd identifier in expression position: a `@`/`#`
+   *  variable glued directly (no whitespace) to a `(`, e.g.
+   *  @variable_(abc_def). A variable can never be a function call, so this is
+   *  unambiguous — unlike a plain word `foo(...)`, which is an invocation. */
+  private varGluedToParen(): boolean {
+    const cur = this.current();
+    if (cur.type !== TokenType.Word) return false;
+    if (!cur.value.startsWith('@') && !cur.value.startsWith('#')) return false;
+    const next = this.peek(1);
+    return next.type === TokenType.LeftParen && this.adjacent(cur, next);
+  }
+
   /** Append text to a name token, carrying the trailing comments of the last
    *  consumed token forward onto the combined token. */
   private extendName(combined: Token, text: string, last: Token): Token {
@@ -1980,10 +1992,12 @@ class Parser {
 
     // Word or quoted identifier: identifier, function call, or qualified name
     if (this.isWord() || this.isType(TokenType.QuotedIdentifier)) {
-      // Odd identifier the lexer split apart, e.g. @AS-2_OH → @AS, -, 2, _OH.
-      // Only rejoin when the adjacent run carries a number→word artifact that
-      // can never be valid arithmetic, so @x-@y / @x-5 stay subtraction.
-      if (this.runHasNumberWordArtifact()) {
+      // Odd identifier the lexer split apart. Rejoin only when it is
+      // unambiguous: either a number→word artifact (e.g. @AS-2_OH) that can
+      // never be valid arithmetic, or a @/# variable glued to a `(` (e.g.
+      // @variable_(abc_def)) — a variable is never a function call. Plain
+      // operator splits like @x-@y / @x-5 stay arithmetic.
+      if (this.runHasNumberWordArtifact() || this.varGluedToParen()) {
         return { type: 'identifier', parts: [this.parseNamePosition()] } as IdentifierNode;
       }
       const name = this.parseQualifiedName();

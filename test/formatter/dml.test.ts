@@ -243,4 +243,32 @@ describe('non-standard variable names in expressions', () => {
   it('spaces an unspaced bitwise operator', () => {
     expect(formatSQL('SELECT a&b FROM t')).toContain('a & b');
   });
+
+  it('keeps a parenthesised variable name intact in an INSERT VALUES list', () => {
+    const result = formatSQL('INSERT INTO dbo.t (col1, col2) VALUES (@variable_(abc_def), @variable_(abc_def)_local)');
+    expect(result).toContain('@variable_(abc_def)');
+    expect(result).toContain('@variable_(abc_def)_local');
+  });
+
+  it('keeps a parenthesised variable name intact in SELECT/WHERE', () => {
+    const result = formatSQL('SELECT @variable_(abc_def)_local AS x WHERE y = @variable_(abc_def)');
+    expect(result).toContain('@variable_(abc_def)_local');
+    expect(result).toContain('= @variable_(abc_def)');
+  });
+
+  it('still parses a genuine function call', () => {
+    const result = formatSQL('SELECT COUNT(*), dbo.MyFunc(1, 2) FROM t');
+    expect(result).toContain('COUNT(*)');
+    expect(result).toContain('dbo.MyFunc(1, 2)');
+  });
+
+  it('keeps a parenthesised variable name with a bracketed inner part', () => {
+    expect(formatSQL('SELECT @variable_([abc_def]) AS x')).toContain('@variable_([abc_def])');
+    expect(formatSQL('SELECT @variable_([abc_def])_local AS x')).toContain('@variable_([abc_def])_local');
+  });
+
+  it('keeps a parenthesised variable name intact inside nested functions', () => {
+    const result = formatSQL('INSERT INTO dbo.t (c) VALUES (TRY_PARSE(NULLIF(@variable_([abc_def]), 0) AS INT))');
+    expect(result).toContain('TRY_PARSE(NULLIF(@variable_([abc_def]), 0) AS INT)');
+  });
 });
