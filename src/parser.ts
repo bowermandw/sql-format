@@ -408,30 +408,79 @@ class Parser {
 
   /** Read an identifier in a "name position" (a procedure parameter or a
    *  column-definition name). The lexer always splits a hyphen out as a
-   *  subtraction operator, so `@A1_Param_-_Name_Total` arrives as three
-   *  tokens (`@A1_Param_`, `-`, `_Name_Total`). T-SQL has no hyphen in a
-   *  legal identifier, but some generated/legacy code uses them; in a name
+   *  subtraction operator and a parenthesis out as its own token, so an odd
+   *  name like `@A1_Param_-_Name_Total` or `@variable_(words_-_xx)` arrives
+   *  as several tokens. T-SQL has no hyphen or parenthesis in a legal
+   *  identifier, but some generated/legacy code uses them; in a name
    *  position there is no expression to confuse it with, so we re-join the
    *  pieces — but only when they are physically adjacent (no surrounding
-   *  whitespace), so a spaced `@x - y` is left as subtraction. */
+   *  whitespace), so a spaced `@x - y` or a real datatype `@x VARCHAR(30)`
+   *  is left alone. */
   private parseNamePosition(): Token {
     let combined = this.advance();
-    while (
-      this.isType(TokenType.Operator) && this.current().value === '-' &&
-      this.adjacent(combined, this.current()) &&
-      this.adjacent(this.current(), this.peek(1)) &&
-      (this.peek(1).type === TokenType.Word || this.peek(1).type === TokenType.NumberLiteral)
-    ) {
-      const hyphen = this.advance();
-      const next = this.advance();
-      combined = {
-        ...combined,
-        value: combined.value + hyphen.value + next.value,
-        trailingComment: next.trailingComment,
-        trailingComments: next.trailingComments,
-      };
+    for (;;) {
+      const cur = this.current();
+      if (!this.adjacent(combined, cur)) break;
+      // Hyphen glued between word/number pieces: @A1_Param_-_Name_Total
+      if (
+        cur.type === TokenType.Operator && cur.value === '-' &&
+        this.adjacent(cur, this.peek(1)) &&
+        (this.peek(1).type === TokenType.Word || this.peek(1).type === TokenType.NumberLiteral)
+      ) {
+        const hyphen = this.advance();
+        const next = this.advance();
+        combined = this.extendName(combined, hyphen.value + next.value, next);
+        continue;
+      }
+      // Parenthesised segment glued directly to the name: @variable_(words_-_xx)
+      if (cur.type === TokenType.LeftParen) {
+        const extended = this.absorbAdjacentParens(combined);
+        if (extended) { combined = extended; continue; }
+      }
+      break;
     }
     return combined;
+  }
+
+  /** Append text to a name token, carrying the trailing comments of the last
+   *  consumed token forward onto the combined token. */
+  private extendName(combined: Token, text: string, last: Token): Token {
+    return {
+      ...combined,
+      value: combined.value + text,
+      trailingComment: last.trailingComment,
+      trailingComments: last.trailingComments,
+    };
+  }
+
+  /** If the current `(` begins a balanced, gap-free parenthesised group (no
+   *  whitespace anywhere inside or before it), consume the whole group and
+   *  fold its raw text into the name token. Returns null without consuming
+   *  anything if the group is unbalanced or contains whitespace — in which
+   *  case the `(` belongs to something else (e.g. a datatype precision). */
+  private absorbAdjacentParens(combined: Token): Token | null {
+    let depth = 0;
+    let prev = combined;
+    let count = 0;
+    for (;;) {
+      const tok = this.peek(count);
+      if (tok.type === TokenType.EOF) return null;
+      if (!this.adjacent(prev, tok)) return null;
+      if (tok.type === TokenType.LeftParen) depth++;
+      else if (tok.type === TokenType.RightParen) {
+        depth--;
+        if (depth === 0) { count++; break; }
+      }
+      prev = tok;
+      count++;
+    }
+    let text = '';
+    let last = combined;
+    for (let k = 0; k < count; k++) {
+      last = this.advance();
+      text += last.value;
+    }
+    return this.extendName(combined, text, last);
   }
 
   private parseProcParameter(): ProcParameter {
