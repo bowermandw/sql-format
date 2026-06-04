@@ -321,3 +321,24 @@ describe('comments in CREATE TABLE / DECLARE TABLE column definitions', () => {
     expect(result).toContain('name VARCHAR(50)');
   });
 });
+
+// ---- hyphenated names in name positions (parser re-joins lexer-split hyphens) ----
+
+describe('hyphenated identifiers in name positions', () => {
+  it('preserves a hyphenated procedure parameter name', () => {
+    const result = formatSQL('CREATE PROCEDURE dbo.Test\n  @A1_Param_-_Name_Total VARCHAR (30) = NULL\nAS\nBEGIN\n  SELECT 1\nEND');
+    expect(result).toContain('@A1_Param_-_Name_Total VARCHAR(30) = NULL');
+  });
+
+  it('preserves a multi-hyphen column name', () => {
+    const result = formatSQL('CREATE TABLE dbo.T (My-Col-Name INT, Normal INT)');
+    expect(result).toContain('My-Col-Name INT');
+  });
+
+  it('still treats hyphens in expressions as subtraction', () => {
+    const result = formatSQL('SELECT a-b, @x-@y FROM t WHERE c-1 > 0');
+    expect(result).toContain('a - b');
+    expect(result).toContain('@x - @y');
+    expect(result).toContain('c - 1');
+  });
+});

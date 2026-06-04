@@ -400,8 +400,42 @@ class Parser {
     };
   }
 
+  /** True when token `b` starts exactly where token `a` ends — i.e. no
+   *  whitespace or comment separated them in the source. */
+  private adjacent(a: Token, b: Token): boolean {
+    return a.offset + a.value.length === b.offset;
+  }
+
+  /** Read an identifier in a "name position" (a procedure parameter or a
+   *  column-definition name). The lexer always splits a hyphen out as a
+   *  subtraction operator, so `@A1_Param_-_Name_Total` arrives as three
+   *  tokens (`@A1_Param_`, `-`, `_Name_Total`). T-SQL has no hyphen in a
+   *  legal identifier, but some generated/legacy code uses them; in a name
+   *  position there is no expression to confuse it with, so we re-join the
+   *  pieces — but only when they are physically adjacent (no surrounding
+   *  whitespace), so a spaced `@x - y` is left as subtraction. */
+  private parseNamePosition(): Token {
+    let combined = this.advance();
+    while (
+      this.isType(TokenType.Operator) && this.current().value === '-' &&
+      this.adjacent(combined, this.current()) &&
+      this.adjacent(this.current(), this.peek(1)) &&
+      (this.peek(1).type === TokenType.Word || this.peek(1).type === TokenType.NumberLiteral)
+    ) {
+      const hyphen = this.advance();
+      const next = this.advance();
+      combined = {
+        ...combined,
+        value: combined.value + hyphen.value + next.value,
+        trailingComment: next.trailingComment,
+        trailingComments: next.trailingComments,
+      };
+    }
+    return combined;
+  }
+
   private parseProcParameter(): ProcParameter {
-    const name = this.advance(); // @param
+    const name = this.parseNamePosition(); // @param
     const dataType = this.parseDataType();
     let defaultVal: SqlNode | undefined;
     let output: Token | undefined;
@@ -518,7 +552,7 @@ class Parser {
   }
 
   private parseColumnDef(): ColumnDefNode {
-    const name = this.advance();
+    const name = this.parseNamePosition();
 
     // Check if the next token is a constraint keyword instead of a data type
     // This indicates a missing data type

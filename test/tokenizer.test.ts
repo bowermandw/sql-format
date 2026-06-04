@@ -135,6 +135,12 @@ describe('tokenizer', () => {
     expect(words[0].value).toBe('#temp');
     expect(words[1].value).toBe('##global_temp');
   });
+
+  it('always splits a hyphen out of a word (hyphen joining is parser-driven)', () => {
+    const tokens = tokenize('@A1_Param_-_Name_Total');
+    const values = tokens.filter(t => t.type !== TokenType.EOF).map(t => t.value);
+    expect(values).toEqual(['@A1_Param_', '-', '_Name_Total']);
+  });
 });
 
 describe('attachComments', () => {
