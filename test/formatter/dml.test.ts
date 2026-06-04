@@ -218,4 +218,17 @@ describe('non-standard variable names in expressions', () => {
     expect(result).toContain('@x - 5');
     expect(result).toContain('c - 1');
   });
+
+  it('still treats genuine slash arithmetic as division', () => {
+    const result = formatSQL('SELECT a/b, @x/@y, @x/5 FROM t');
+    expect(result).toContain('a / b');
+    expect(result).toContain('@x / @y');
+    expect(result).toContain('@x / 5');
+  });
+
+  it('rejoins a number-containing slash variable via the artifact rule', () => {
+    const result = formatSQL('SELECT @XX/2YY AS x');
+    expect(result).toContain('@XX/2YY');
+    expect(result).not.toContain('@XX /');
+  });
 });

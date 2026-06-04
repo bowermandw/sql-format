@@ -152,4 +152,14 @@ describe('non-standard variable names', () => {
     const result = formatSQL('SET @AS-2_OH = 5');
     expect(result).toContain('SET @AS-2_OH = 5');
   });
+
+  it('preserves a slash in the name in DECLARE', () => {
+    const result = formatSQL('DECLARE @XX/YY_ABC_DEF VARCHAR(30)');
+    expect(result).toContain('DECLARE @XX/YY_ABC_DEF VARCHAR(30)');
+  });
+
+  it('preserves a slash in a SET assignment target', () => {
+    const result = formatSQL('SET @XX/YY_ABC_DEF = 5');
+    expect(result).toContain('SET @XX/YY_ABC_DEF = 5');
+  });
 });

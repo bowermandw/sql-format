@@ -408,10 +408,11 @@ class Parser {
 
   /** Read an identifier in a "name position" (a procedure parameter or a
    *  column-definition name). The lexer splits an odd name into several
-   *  tokens: a hyphen becomes a subtraction operator, a parenthesis its own
-   *  token, and a number literal stops at `_`/letters — so `@AS-2_OH` arrives
-   *  as `@AS`, `-`, `2`, `_OH` and `@variable_(words_-_xx)` as many tokens.
-   *  T-SQL has no hyphen or parenthesis in a legal identifier, but some
+   *  tokens: a hyphen/slash becomes an arithmetic operator, a parenthesis its
+   *  own token, and a number literal stops at `_`/letters — so `@AS-2_OH`
+   *  arrives as `@AS`, `-`, `2`, `_OH`, `@XX/YY_ABC_DEF` as `@XX`, `/`,
+   *  `YY_ABC_DEF`, and `@variable_(words_-_xx)` as many tokens. T-SQL has no
+   *  hyphen, slash or parenthesis in a legal identifier, but some
    *  generated/legacy code uses them; in a name position there is no
    *  expression to confuse it with, so we re-join the pieces — but only when
    *  they are physically adjacent (no surrounding whitespace), so a spaced
@@ -428,15 +429,16 @@ class Parser {
         combined = this.extendName(combined, next.value, next);
         continue;
       }
-      // Hyphen glued between word/number pieces: @A1_Param_-_Name_Total
+      // Hyphen or slash glued between word/number pieces, e.g.
+      // @A1_Param_-_Name_Total or @XX/YY_ABC_DEF.
       if (
-        cur.type === TokenType.Operator && cur.value === '-' &&
+        cur.type === TokenType.Operator && (cur.value === '-' || cur.value === '/') &&
         this.adjacent(cur, this.peek(1)) &&
         (this.peek(1).type === TokenType.Word || this.peek(1).type === TokenType.NumberLiteral)
       ) {
-        const hyphen = this.advance();
+        const op = this.advance();
         const next = this.advance();
-        combined = this.extendName(combined, hyphen.value + next.value, next);
+        combined = this.extendName(combined, op.value + next.value, next);
         continue;
       }
       // Parenthesised segment glued directly to the name: @variable_(words_-_xx)
@@ -485,7 +487,7 @@ class Parser {
       const isNameish =
         tok.type === TokenType.Word ||
         tok.type === TokenType.NumberLiteral ||
-        (tok.type === TokenType.Operator && tok.value === '-');
+        (tok.type === TokenType.Operator && (tok.value === '-' || tok.value === '/'));
       if (!isNameish) break;
       if (prev.type === TokenType.NumberLiteral && tok.type === TokenType.Word) return true;
       prev = tok;

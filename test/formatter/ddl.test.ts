@@ -357,4 +357,9 @@ describe('hyphenated identifiers in name positions', () => {
     const result = formatSQL('CREATE PROCEDURE dbo.Test\n  @AS-2_OH VARCHAR (30) = NULL\nAS BEGIN SELECT 1 END');
     expect(result).toContain('@AS-2_OH VARCHAR(30) = NULL');
   });
+
+  it('preserves a parameter name containing a slash', () => {
+    const result = formatSQL('CREATE PROCEDURE dbo.Test\n  @XX/YY_ABC_DEF VARCHAR (30) = NULL\nAS BEGIN SELECT 1 END');
+    expect(result).toContain('@XX/YY_ABC_DEF VARCHAR(30) = NULL');
+  });
 });
