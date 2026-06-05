@@ -352,7 +352,7 @@ export const DEFAULT_CONFIG: FormatConfig = {
   },
 };
 
-function deepMerge(target: any, source: any): any {
+export function deepMerge(target: any, source: any): any {
   const result = { ...target };
   for (const key of Object.keys(source)) {
     if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key]) &&
@@ -365,17 +365,29 @@ function deepMerge(target: any, source: any): any {
   return result;
 }
 
-export function loadConfig(filePath: string): FormatConfig {
-  const raw = fs.readFileSync(filePath, 'utf-8');
-  const userConfig = JSON.parse(raw);
+/**
+ * Merge an in-memory partial style config over DEFAULT_CONFIG.
+ * Normalizes older flat-level fields, then deep-merges. Use this when the config
+ * comes from somewhere other than a file on disk (e.g. an editor extension).
+ */
+export function mergeConfig(userConfig?: Partial<FormatConfig> | Record<string, any>): FormatConfig {
+  if (!userConfig) {
+    return deepMerge(DEFAULT_CONFIG, {});
+  }
 
   // Handle flat-level fields from older style files (e.g., placeCommasBeforeItems at lists level)
-  if (userConfig.lists) {
-    if ('placeCommasBeforeItems' in userConfig.lists && !userConfig.lists.commas) {
-      userConfig.lists.commas = { placeCommasBeforeItems: userConfig.lists.placeCommasBeforeItems };
-      delete userConfig.lists.placeCommasBeforeItems;
+  const normalized: Record<string, any> = userConfig as Record<string, any>;
+  if (normalized.lists) {
+    if ('placeCommasBeforeItems' in normalized.lists && !normalized.lists.commas) {
+      normalized.lists.commas = { placeCommasBeforeItems: normalized.lists.placeCommasBeforeItems };
+      delete normalized.lists.placeCommasBeforeItems;
     }
   }
 
-  return deepMerge(DEFAULT_CONFIG, userConfig);
+  return deepMerge(DEFAULT_CONFIG, normalized);
+}
+
+export function loadConfig(filePath: string): FormatConfig {
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  return mergeConfig(JSON.parse(raw));
 }

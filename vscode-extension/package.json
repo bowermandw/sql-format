@@ -1,0 +1,53 @@
+{
+  "name": "sql-format-vscode",
+  "displayName": "T-SQL Format",
+  "description": "Format T-SQL using sql-format with RedGate-compatible JSON style configs",
+  "version": "0.1.0",
+  "publisher": "meraki-digital",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Formatters"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:sql"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "sqlFormat.formatDocument",
+        "title": "Format SQL Document",
+        "category": "T-SQL Format"
+      }
+    ],
+    "configuration": {
+      "title": "T-SQL Format",
+      "properties": {
+        "sqlFormat.styleFile": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to a JSON style configuration file (RedGate-compatible). Relative paths resolve against the document's workspace folder. Leave empty to use defaults or auto-detection."
+        },
+        "sqlFormat.autoDetectStyleFile": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "When `#sqlFormat.styleFile#` is not set, look for a `.sqlformat.json` file in the workspace root and use it if present."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "node esbuild.js && npx @vscode/vsce package --allow-missing-repository --skip-license"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "@types/vscode": "^1.80.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.4.0"
+  }
+}
