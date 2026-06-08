@@ -2674,19 +2674,28 @@ class Formatter {
       // Build output by joining keywords with space and expressions with commas
       let result = this.kw('OVER') + ' (';
       let first = true;
+      // Once a window-frame keyword (ROWS/RANGE/GROUPS) is seen, the remaining
+      // tokens form a frame clause (e.g. BETWEEN UNBOUNDED PRECEDING AND
+      // CURRENT ROW), never a comma-separated list — join them with spaces.
+      let inFrame = false;
       for (let i = 1; i < pg.inner.length; i++) {
         const n = pg.inner[i];
-        const isKeyword = n.type === 'rawToken' && /^(PARTITION BY|ORDER BY|ROWS|RANGE|GROUPS)\b/i.test((n as RawTokenNode).token.value);
+        const isFrameKeyword = n.type === 'rawToken' && /^(ROWS|RANGE|GROUPS)\b/i.test((n as RawTokenNode).token.value);
+        const isKeyword = isFrameKeyword || (n.type === 'rawToken' && /^(PARTITION BY|ORDER BY)\b/i.test((n as RawTokenNode).token.value));
+        if (isFrameKeyword) inFrame = true;
+        // Sort-direction / null-ordering modifiers belong to the preceding
+        // expression, not a new list item — join them with a space, not a comma.
+        const isSortModifier = n.type === 'rawToken' && /^(ASC|DESC|NULLS|FIRST|LAST)$/i.test((n as RawTokenNode).token.value);
         if (isKeyword) {
           if (!first) result += ' ';
           result += this.kw((n as RawTokenNode).token.value.toUpperCase());
         } else {
-          if (!first && !isKeywordAt(pg.inner, i - 1)) {
+          if (!first && !isKeywordAt(pg.inner, i - 1) && !isSortModifier && !inFrame) {
             result += ', ';
           } else {
             if (!first) result += ' ';
           }
-          result += this.formatNode(n);
+          result += isSortModifier ? this.kw((n as RawTokenNode).token.value.toUpperCase()) : this.formatNode(n);
         }
         first = false;
       }

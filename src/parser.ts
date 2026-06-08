@@ -2092,11 +2092,21 @@ class Parser {
         const byToken = this.isWord('BY') ? this.advance() : undefined;
         const combinedValue = byToken ? keyword.value + ' ' + byToken.value : keyword.value;
         inner.push({ type: 'rawToken', token: { ...keyword, value: combinedValue } } as RawTokenNode);
-        // Parse the expression list
+        // Parse the expression list. Each item may carry trailing sort-direction
+        // (ASC/DESC) and null-ordering (NULLS FIRST/LAST) modifiers, which belong
+        // to the item rather than being separate list entries.
+        const consumeSortModifiers = () => {
+          while (this.isWord('ASC') || this.isWord('DESC') || this.isWord('NULLS') ||
+                 this.isWord('FIRST') || this.isWord('LAST')) {
+            inner.push({ type: 'rawToken', token: this.advance() } as RawTokenNode);
+          }
+        };
         inner.push(this.parseExpression());
+        consumeSortModifiers();
         while (this.isType(TokenType.Comma)) {
           this.advanceComma();
           inner.push(this.parseExpression());
+          consumeSortModifiers();
         }
       } else if (this.isWord('ROWS') || this.isWord('RANGE') || this.isWord('GROUPS')) {
         // Window frame clause - consume tokens until closing paren

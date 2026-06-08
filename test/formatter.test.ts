@@ -1584,4 +1584,32 @@ describe('USE statement', () => {
     const result = formatSQL(sql);
     expect(result).toContain('; -- comment');
   });
+
+  // ---- Window functions (OVER clause) ----
+
+  it('does not insert a comma before DESC in OVER ORDER BY', () => {
+    const sql = 'SELECT ROW_NUMBER() OVER (PARTITION BY c1, c2 ORDER BY c3 DESC) AS rn FROM t';
+    const result = formatSQL(sql);
+    expect(result).toContain('ORDER BY c3 DESC');
+    expect(result).not.toContain('c3, DESC');
+  });
+
+  it('keeps sort directions and item commas correct in multi-column OVER ORDER BY', () => {
+    const sql = 'SELECT ROW_NUMBER() OVER (ORDER BY c3 ASC, c4 DESC) AS rn FROM t';
+    const result = formatSQL(sql);
+    expect(result).toContain('ORDER BY c3 ASC, c4 DESC');
+  });
+
+  it('preserves NULLS ordering in OVER ORDER BY', () => {
+    const sql = 'SELECT RANK() OVER (ORDER BY c3 ASC NULLS LAST, c4 DESC) AS r FROM t';
+    const result = formatSQL(sql);
+    expect(result).toContain('ORDER BY c3 ASC NULLS LAST, c4 DESC');
+  });
+
+  it('does not insert commas in a window frame clause', () => {
+    const sql = 'SELECT SUM(x) OVER (PARTITION BY c1 ORDER BY c3 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS s FROM t';
+    const result = formatSQL(sql);
+    expect(result).toContain('ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW');
+    expect(result).not.toContain(', UNBOUNDED');
+  });
 });
