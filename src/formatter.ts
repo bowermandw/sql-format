@@ -2483,6 +2483,30 @@ class Formatter {
     // Try to split at the top-level operator
     if (node.type === 'expression') {
       const expr = node as ExpressionNode;
+
+      // Assignment whose right side is an expandable construct (e.g.
+      // `@var = COALESCE(...)`): keep `left = ` on the first line and expand
+      // the right operand, rather than breaking before `=` and leaving the
+      // operator dangling at the left operand's indent. We expand the right
+      // operand by temporarily shrinking the wrap threshold by the prefix
+      // width so its own expansion decision accounts for `left = `.
+      if (expr.operator.value === '=' && !this.tokenHasComments(expr.operator) &&
+          (expr.right.type === 'functionCall' || expr.right.type === 'parenGroup')) {
+        const leftStr = this.maybeParenthesize(expr.left, this.formatNode(expr.left));
+        const opStr = this.tokenValue(expr.operator);
+        const prefix = leftStr + ' ' + opStr + ' ';
+        const savedThreshold = this.config.whitespace.wrapLinesLongerThan;
+        (this.config.whitespace as any).wrapLinesLongerThan = Math.max(0, savedThreshold - prefix.length);
+        const rightStr = this.maybeParenthesize(expr.right, this.formatNode(expr.right, indentLevel));
+        (this.config.whitespace as any).wrapLinesLongerThan = savedThreshold;
+        const firstLineLen = prefix.length + this.lastLineLength(rightStr.split('\n')[0]) + indentLevel * this.tabStr.length;
+        // Use this form when the right operand expanded, or when keeping it
+        // inline still fits; otherwise fall through to the operator break.
+        if (rightStr.includes('\n') || firstLineLen <= savedThreshold) {
+          return prefix + rightStr;
+        }
+      }
+
       const left = this.maybeParenthesize(expr.left, this.wrapExpression(expr.left, indentLevel));
       const right = this.maybeParenthesize(expr.right, this.wrapExpression(expr.right, indentLevel));
       const op = this.tokenValue(expr.operator);

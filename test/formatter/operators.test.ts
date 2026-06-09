@@ -233,3 +233,33 @@ describe('operators.comparison.align', () => {
     expect(andLine).toContain('t.column3 = ');
   });
 });
+
+// ---- assignment wrapping: keep `left = ` with an expandable right side ----
+
+describe('assignment expression wrapping', () => {
+  const wrap = { whitespace: { wrapLongLines: true, wrapLinesLongerThan: 60 } };
+
+  it('keeps "@var = COALESCE(" together and expands the args instead of breaking before =', () => {
+    const sql = "SELECT @my_long_variable_name_here = COALESCE(@my_long_variable_name_here, alias.fallback_column_value_xyz) FROM dbo.t AS [alias]";
+    const result = formatSQL(sql, wrap);
+    // The = stays on the same line as the variable and the call opens there.
+    expect(result).toContain('@my_long_variable_name_here = COALESCE(');
+    // It must NOT break before the operator, leaving "=" dangling at the
+    // variable's indent.
+    expect(result).not.toMatch(/@my_long_variable_name_here\n\s*= /);
+  });
+
+  it('keeps "SET @var = func(" together when the call expands', () => {
+    const sql = "SET @my_long_variable_name_here = COALESCE(@my_long_variable_name_here, t.fallback_column_value_xyz, t.another_fallback_value)";
+    const result = formatSQL(sql, wrap);
+    expect(result).toContain('SET @my_long_variable_name_here = COALESCE(');
+    expect(result).not.toMatch(/@my_long_variable_name_here\n\s*= /);
+  });
+
+  it('keeps "col = func(" together for a long WHERE comparison', () => {
+    const sql = "SELECT a FROM t WHERE some_column_name_here = COALESCE(first_fallback_value_column, second_fallback_value_column_here)";
+    const result = formatSQL(sql, wrap);
+    expect(result).toContain('some_column_name_here = COALESCE(');
+    expect(result).not.toMatch(/some_column_name_here\n\s*= /);
+  });
+});
