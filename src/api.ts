@@ -2,6 +2,7 @@ import { tokenize, attachComments } from './tokenizer';
 import { parse } from './parser';
 import { format } from './formatter';
 import { DEFAULT_CONFIG, FormatConfig, mergeConfig } from './config';
+import { analyze, Warning, AnalyzeOptions } from './analyzer';
 
 /**
  * Format a SQL string end-to-end: tokenize -> attachComments -> parse -> format.
@@ -21,5 +22,17 @@ export function formatSql(sql: string, config?: Partial<FormatConfig>): string {
   return format(ast, resolved);
 }
 
+/**
+ * Analyze a SQL string end-to-end: tokenize -> attachComments -> parse -> analyze.
+ * Mirrors the CLI analyze pipeline. Throws if the SQL cannot be parsed; callers
+ * running on in-progress edits (e.g. an editor) should wrap this in try/catch.
+ */
+export function analyzeSql(sql: string, options: AnalyzeOptions): Warning[] {
+  const rawTokens = tokenize(sql);
+  const tokens = attachComments(rawTokens);
+  const ast = parse(tokens);
+  return analyze(ast, options);
+}
+
 export { DEFAULT_CONFIG, mergeConfig };
-export type { FormatConfig };
+export type { FormatConfig, Warning, AnalyzeOptions };

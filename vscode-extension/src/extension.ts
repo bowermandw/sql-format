@@ -1,9 +1,26 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { formatSql, mergeConfig, DEFAULT_CONFIG, FormatConfig } from '../../src/api';
+import {
+  formatSql, mergeConfig, DEFAULT_CONFIG, FormatConfig,
+  analyzeSql, Warning, AnalyzeOptions,
+} from '../../src/api';
 
 const AUTO_DETECT_FILENAME = '.sqlformat.json';
+
+/** Boolean settings that map 1:1 to AnalyzeOptions (and the CLI analyze flags). */
+const ANALYZE_SETTING_KEYS = [
+  'warnMissingSchema',
+  'warnMissingAlias',
+  'warnMissingNocount',
+  'warnMissingNullability',
+  'checkInsertColumns',
+] as const;
+
+const DEBOUNCE_MS = 300;
+
+let diagnostics: vscode.DiagnosticCollection | undefined;
+const debounceTimers = new Map<string, NodeJS.Timeout>();
 
 export function activate(context: vscode.ExtensionContext): void {
   const provider: vscode.DocumentFormattingEditProvider = {
@@ -27,10 +44,42 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     })
   );
+
+  // Analyzer warnings surface as diagnostics (squiggles + Problems panel),
+  // independent of formatting: refreshed on open/change/save and when settings change.
+  diagnostics = vscode.languages.createDiagnosticCollection('sqlFormat');
+  context.subscriptions.push(
+    diagnostics,
+    vscode.workspace.onDidOpenTextDocument(doc => refreshDiagnostics(doc)),
+    vscode.workspace.onDidChangeTextDocument(e => scheduleRefresh(e.document)),
+    vscode.workspace.onDidSaveTextDocument(doc => refreshDiagnostics(doc)),
+    vscode.workspace.onDidCloseTextDocument(doc => {
+      cancelScheduled(doc);
+      diagnostics?.delete(doc.uri);
+    }),
+    vscode.workspace.onDidChangeConfiguration(e => {
+      if (!e.affectsConfiguration('sqlFormat')) {
+        return;
+      }
+      for (const doc of vscode.workspace.textDocuments) {
+        refreshDiagnostics(doc);
+      }
+    })
+  );
+
+  // Cover SQL documents already open at activation.
+  for (const doc of vscode.workspace.textDocuments) {
+    refreshDiagnostics(doc);
+  }
 }
 
 export function deactivate(): void {
-  // nothing to clean up
+  for (const timer of debounceTimers.values()) {
+    clearTimeout(timer);
+  }
+  debounceTimers.clear();
+  diagnostics?.dispose();
+  diagnostics = undefined;
 }
 
 /**
@@ -174,4 +223,86 @@ function readConfigFile(filePath: string): FormatConfig {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** Debounce a diagnostics refresh for a document (e.g. on every keystroke). */
+function scheduleRefresh(document: vscode.TextDocument): void {
+  if (document.languageId !== 'sql') {
+    return;
+  }
+  const key = document.uri.toString();
+  const existing = debounceTimers.get(key);
+  if (existing) {
+    clearTimeout(existing);
+  }
+  debounceTimers.set(key, setTimeout(() => {
+    debounceTimers.delete(key);
+    refreshDiagnostics(document);
+  }, DEBOUNCE_MS));
+}
+
+function cancelScheduled(document: vscode.TextDocument): void {
+  const key = document.uri.toString();
+  const existing = debounceTimers.get(key);
+  if (existing) {
+    clearTimeout(existing);
+    debounceTimers.delete(key);
+  }
+}
+
+/**
+ * Re-run the analyzer for a SQL document and publish its warnings as diagnostics.
+ * Reads the per-document `sqlFormat.warn*` / `checkInsertColumns` settings; if none
+ * are enabled the collection is cleared. Failure-safe: a parse error on in-progress
+ * edits leaves the previous diagnostics in place rather than throwing.
+ */
+function refreshDiagnostics(document: vscode.TextDocument): void {
+  if (!diagnostics || document.languageId !== 'sql') {
+    return;
+  }
+
+  const settings = vscode.workspace.getConfiguration('sqlFormat', document.uri);
+  const options: AnalyzeOptions = {
+    warnMissingSchema: settings.get<boolean>('warnMissingSchema') === true,
+    warnMissingAlias: settings.get<boolean>('warnMissingAlias') === true,
+    warnMissingNocount: settings.get<boolean>('warnMissingNocount') === true,
+    warnMissingNullability: settings.get<boolean>('warnMissingNullability') === true,
+    checkInsertColumns: settings.get<boolean>('checkInsertColumns') === true,
+  };
+
+  const anyEnabled = ANALYZE_SETTING_KEYS.some(key => options[key]);
+  if (!anyEnabled) {
+    diagnostics.delete(document.uri);
+    return;
+  }
+
+  let warnings: Warning[];
+  try {
+    warnings = analyzeSql(document.getText(), options);
+  } catch {
+    // Mid-edit SQL may not parse — keep the last good diagnostics, skip this update.
+    return;
+  }
+
+  diagnostics.set(document.uri, warnings.map(w => toDiagnostic(document, w)));
+}
+
+function toDiagnostic(document: vscode.TextDocument, w: Warning): vscode.Diagnostic {
+  const diag = new vscode.Diagnostic(
+    wholeLineRange(document, w.line),
+    w.message,
+    vscode.DiagnosticSeverity.Warning
+  );
+  diag.source = 'sql-format';
+  return diag;
+}
+
+/**
+ * Map an analyzer warning's 1-based (optional) line to a whole-line range.
+ * Line-less warnings anchor at line 0; lines past the current buffer are clamped.
+ */
+function wholeLineRange(document: vscode.TextDocument, line?: number): vscode.Range {
+  const zeroBased = line && line > 0 ? line - 1 : 0;
+  const clamped = Math.min(zeroBased, Math.max(0, document.lineCount - 1));
+  return document.lineAt(clamped).range;
 }

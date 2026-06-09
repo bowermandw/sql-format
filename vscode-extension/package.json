@@ -2,7 +2,7 @@
   "name": "sql-format-vscode",
   "displayName": "T-SQL Format",
   "description": "Format T-SQL using sql-format with RedGate-compatible JSON style configs",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "meraki-digital",
   "engines": {
     "vscode": "^1.80.0"
@@ -100,6 +100,31 @@
           ],
           "default": "default",
           "markdownDescription": "Override the style config's line-ending style (CLI `--line-ending`). `default` leaves the style config untouched."
+        },
+        "sqlFormat.warnMissingSchema": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Warn when a table, view, or stored-procedure reference has no schema prefix (CLI `--warn-missing-schema`). Shown as a squiggle and in the Problems panel."
+        },
+        "sqlFormat.warnMissingAlias": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Warn when a table or view in a `FROM`/`JOIN` clause has no alias (CLI `--warn-missing-alias`). Shown as a squiggle and in the Problems panel."
+        },
+        "sqlFormat.warnMissingNocount": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Warn when a stored procedure body does not contain `SET NOCOUNT ON` (CLI `--warn-missing-nocount`). Shown as a squiggle and in the Problems panel."
+        },
+        "sqlFormat.warnMissingNullability": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Warn when a temp-table or table-variable column omits `NULL` / `NOT NULL` (CLI `--warn-missing-nullability`). Shown as a squiggle and in the Problems panel."
+        },
+        "sqlFormat.checkInsertColumns": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Show the `INSERT ... SELECT` column mapping and flag count/name mismatches (CLI `--check-insert-columns`). Shown in the Problems panel."
         }
       }
     }

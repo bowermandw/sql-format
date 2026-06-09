@@ -2483,6 +2483,30 @@ class Formatter {
     // Try to split at the top-level operator
     if (node.type === 'expression') {
       const expr = node as ExpressionNode;
+
+      // Assignment whose right side is an expandable construct (e.g.
+      // `@var = COALESCE(...)`): keep `left = ` on the first line and expand
+      // the right operand, rather than breaking before `=` and leaving the
+      // operator dangling at the left operand's indent. We expand the right
+      // operand by temporarily shrinking the wrap threshold by the prefix
+      // width so its own expansion decision accounts for `left = `.
+      if (expr.operator.value === '=' && !this.tokenHasComments(expr.operator) &&
+          (expr.right.type === 'functionCall' || expr.right.type === 'parenGroup')) {
+        const leftStr = this.maybeParenthesize(expr.left, this.formatNode(expr.left));
+        const opStr = this.tokenValue(expr.operator);
+        const prefix = leftStr + ' ' + opStr + ' ';
+        const savedThreshold = this.config.whitespace.wrapLinesLongerThan;
+        (this.config.whitespace as any).wrapLinesLongerThan = Math.max(0, savedThreshold - prefix.length);
+        const rightStr = this.maybeParenthesize(expr.right, this.formatNode(expr.right, indentLevel));
+        (this.config.whitespace as any).wrapLinesLongerThan = savedThreshold;
+        const firstLineLen = prefix.length + this.lastLineLength(rightStr.split('\n')[0]) + indentLevel * this.tabStr.length;
+        // Use this form when the right operand expanded, or when keeping it
+        // inline still fits; otherwise fall through to the operator break.
+        if (rightStr.includes('\n') || firstLineLen <= savedThreshold) {
+          return prefix + rightStr;
+        }
+      }
+
       const left = this.maybeParenthesize(expr.left, this.wrapExpression(expr.left, indentLevel));
       const right = this.maybeParenthesize(expr.right, this.wrapExpression(expr.right, indentLevel));
       const op = this.tokenValue(expr.operator);
@@ -3037,8 +3061,38 @@ class Formatter {
 
   private formatExists(node: ExistsNode): string {
     const notStr = node.notToken ? this.kwTokenWithComments(node.notToken) + ' ' : '';
-    const subquery = this.formatNode(node.subquery);
-    return `${notStr}${this.kwTokenWithComments(node.existsToken)} (${subquery})`;
+    const prefix = `${notStr}${this.kwTokenWithComments(node.existsToken)}`;
+
+    // Non-SELECT subquery (rare): keep inline.
+    if (node.subquery.type !== 'select') {
+      return `${prefix} (${this.formatNode(node.subquery)})`;
+    }
+
+    const innerSelect = node.subquery as SelectNode;
+    const dml = this.config.dml;
+    const outerIndent = this.indentStr(this.indent);
+    const hasInnerComments = !!innerSelect.selectToken?.leadingComments?.length || this.nodeHasComments(innerSelect);
+
+    // Try collapsing a short subquery onto one line.
+    if (dml.collapseShortSubqueries && !hasInnerComments) {
+      const saved = this.saveEmittedComments();
+      const collapsed = this.collapseSelect(innerSelect);
+      if (('(' + collapsed + ')').length <= dml.collapseSubqueriesShorterThan) {
+        return `${prefix} (${collapsed})`;
+      }
+      this.restoreEmittedComments(saved);
+    }
+
+    // Expanded: format the inner SELECT at indent + 1 using subquery collapse settings.
+    const savedCollapse = dml.collapseShortStatements;
+    const savedThreshold = dml.collapseStatementsShorterThan;
+    (this.config.dml as any).collapseShortStatements = dml.collapseShortSubqueries;
+    (this.config.dml as any).collapseStatementsShorterThan = dml.collapseSubqueriesShorterThan;
+    const innerFormatted = this.formatNode(innerSelect, this.indent + 1);
+    (this.config.dml as any).collapseShortStatements = savedCollapse;
+    (this.config.dml as any).collapseStatementsShorterThan = savedThreshold;
+
+    return `${prefix} (\n${innerFormatted}\n${outerIndent})`;
   }
 
   // --- PIVOT / UNPIVOT ---
