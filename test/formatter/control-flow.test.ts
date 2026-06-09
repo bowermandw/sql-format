@@ -290,3 +290,37 @@ describe('comments before END keyword', () => {
     expect(commentIdx).toBe(selectIdx + 2);
   });
 });
+
+// ---- EXISTS subquery formatting ----
+
+describe('EXISTS subquery formatting', () => {
+  it('collapses a short IF EXISTS subquery onto one line', () => {
+    const sql = "IF EXISTS ( SELECT 1 FROM dbo.some_table WHERE table_id = @variable ) BEGIN PRINT 'found' END";
+    const result = formatSQL(sql);
+    expect(result).toContain('IF EXISTS (SELECT 1 FROM dbo.some_table WHERE table_id = @variable)');
+  });
+
+  it('expands a long IF EXISTS subquery indented inside the parentheses', () => {
+    const sql = "IF EXISTS ( SELECT col1, col2, col3, col4 FROM dbo.some_table WHERE table_id = @variable AND status = 'active' AND created_date > @startdate ) BEGIN PRINT 'found' END";
+    const result = formatSQL(sql);
+    const lines = result.split('\n');
+    // Opening paren stays on the IF line, SELECT starts on its own indented line
+    expect(lines[0]).toBe('IF EXISTS (');
+    expect(lines[1]).toBe('    SELECT col1,');
+    // Inner clauses are indented one level deeper than the IF
+    expect(result).toContain('\n    FROM\n');
+    expect(result).toContain('\n    WHERE\n');
+    // Closing paren sits on its own line at the IF's indent
+    expect(result).toContain('\n)\nBEGIN');
+  });
+
+  it('expands a long WHERE NOT EXISTS subquery at the correct indent', () => {
+    const sql = "SELECT a FROM t1 WHERE NOT EXISTS ( SELECT col1, col2, col3, col4 FROM dbo.some_table WHERE table_id = @variable AND status = 'active' AND created_date > @startdate );";
+    const result = formatSQL(sql);
+    expect(result).toContain('    NOT EXISTS (');
+    // Inner SELECT is indented two levels (WHERE clause + subquery)
+    expect(result).toContain('\n        SELECT col1,');
+    // Closing paren aligns with the NOT EXISTS clause indent
+    expect(result).toContain('\n    );');
+  });
+});

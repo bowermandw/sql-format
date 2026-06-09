@@ -3037,8 +3037,38 @@ class Formatter {
 
   private formatExists(node: ExistsNode): string {
     const notStr = node.notToken ? this.kwTokenWithComments(node.notToken) + ' ' : '';
-    const subquery = this.formatNode(node.subquery);
-    return `${notStr}${this.kwTokenWithComments(node.existsToken)} (${subquery})`;
+    const prefix = `${notStr}${this.kwTokenWithComments(node.existsToken)}`;
+
+    // Non-SELECT subquery (rare): keep inline.
+    if (node.subquery.type !== 'select') {
+      return `${prefix} (${this.formatNode(node.subquery)})`;
+    }
+
+    const innerSelect = node.subquery as SelectNode;
+    const dml = this.config.dml;
+    const outerIndent = this.indentStr(this.indent);
+    const hasInnerComments = !!innerSelect.selectToken?.leadingComments?.length || this.nodeHasComments(innerSelect);
+
+    // Try collapsing a short subquery onto one line.
+    if (dml.collapseShortSubqueries && !hasInnerComments) {
+      const saved = this.saveEmittedComments();
+      const collapsed = this.collapseSelect(innerSelect);
+      if (('(' + collapsed + ')').length <= dml.collapseSubqueriesShorterThan) {
+        return `${prefix} (${collapsed})`;
+      }
+      this.restoreEmittedComments(saved);
+    }
+
+    // Expanded: format the inner SELECT at indent + 1 using subquery collapse settings.
+    const savedCollapse = dml.collapseShortStatements;
+    const savedThreshold = dml.collapseStatementsShorterThan;
+    (this.config.dml as any).collapseShortStatements = dml.collapseShortSubqueries;
+    (this.config.dml as any).collapseStatementsShorterThan = dml.collapseSubqueriesShorterThan;
+    const innerFormatted = this.formatNode(innerSelect, this.indent + 1);
+    (this.config.dml as any).collapseShortStatements = savedCollapse;
+    (this.config.dml as any).collapseStatementsShorterThan = savedThreshold;
+
+    return `${prefix} (\n${innerFormatted}\n${outerIndent})`;
   }
 
   // --- PIVOT / UNPIVOT ---
