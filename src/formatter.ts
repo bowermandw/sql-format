@@ -2445,7 +2445,16 @@ class Formatter {
     }
 
     if (node.elseClause) {
-      parts.push(whenIndent + this.kw('ELSE') + ' ' + this.formatNode(node.elseClause.result));
+      const elseResultStr = this.formatNode(node.elseClause.result);
+      const elseLine = whenIndent + this.kw('ELSE') + ' ' + elseResultStr;
+      if (wrapEnabled && elseLine.length > maxLineLen) {
+        // Mirror THEN handling: ELSE on its own line, result wrapped beneath it
+        parts.push(whenIndent + this.kw('ELSE'));
+        const wrappedResult = this.wrapExpression(node.elseClause.result, resultIndentLevel);
+        parts.push(resultIndent + wrappedResult);
+      } else {
+        parts.push(elseLine);
+      }
     }
 
     parts.push(this.indentStr() + this.kw('END'));
@@ -2470,7 +2479,10 @@ class Formatter {
    * result would exceed the configured max line length at the given indent.
    */
   private wrapExpression(node: SqlNode, indentLevel: number): string {
-    const inline = this.formatNode(node);
+    // Format at the target indent level so any nested construct that expands
+    // (e.g. a long function call) lays out its contents relative to where the
+    // expression actually sits, not the ambient indent.
+    const inline = this.formatNode(node, indentLevel);
     const indentWidth = indentLevel * this.tabStr.length;
     // Use last line length for multi-line results (e.g. expanded function calls)
     const effectiveLength = inline.includes('\n')

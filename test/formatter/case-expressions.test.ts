@@ -192,3 +192,41 @@ describe('CASE WHEN condition AND/OR wrapping', () => {
     expect(whenLine).toContain('AND');
   });
 });
+
+// ---- nested function expansion in CASE results (wrapExpression indent) ----
+
+describe('CASE results with long nested function calls', () => {
+  const wrap = {
+    caseExpressions: { collapseShortCaseExpressions: false, placeThenOnNewLine: true, thenAlignment: 'toWhen' },
+    dml: { collapseShortStatements: false },
+    whitespace: { wrapLongLines: true, wrapLinesLongerThan: 80 },
+  };
+  const nested = "REPLACE(REPLACE(REPLACE(REPLACE(@search_local, '\\', '\\\\'), '%', '\\%'), '_', '\\_'), '[', '\\[')";
+
+  it('nests an expanded function call beneath a THEN result', () => {
+    const sql = `SELECT CASE WHEN @search_local IS NULL THEN '%' + ${nested} + '%' ELSE NULL END`;
+    const result = formatSQL(sql, wrap);
+    const lines = result.split('\n');
+    // The outer REPLACE's first argument (the nested REPLACE) must be indented
+    // deeper than the line that opened the outer REPLACE call.
+    const openIdx = lines.findIndex(l => l.trim().endsWith('REPLACE('));
+    expect(openIdx).toBeGreaterThan(-1);
+    const openIndent = lines[openIdx].match(/^ */)![0].length;
+    const argIndent = lines[openIdx + 1].match(/^ */)![0].length;
+    expect(argIndent).toBeGreaterThan(openIndent);
+    // No argument line should dedent to the CASE/SELECT level (regression: args
+    // used to wrap to the ambient indent, landing left of where REPLACE opened).
+    expect(lines[openIdx + 1].trim()).toMatch(/^REPLACE\(/);
+  });
+
+  it('places a long ELSE result on its own line and wraps it', () => {
+    const sql = `SELECT CASE WHEN @search_local IS NULL THEN NULL ELSE '%' + ${nested} + '%' END`;
+    const result = formatSQL(sql, wrap);
+    const lines = result.split('\n');
+    // ELSE keyword stands alone when its result wraps
+    const elseIdx = lines.findIndex(l => l.trim() === 'ELSE');
+    expect(elseIdx).toBeGreaterThan(-1);
+    // The closing paren + tail must stay attached to the result, not leak left
+    expect(result).toContain(") + '%'");
+  });
+});
