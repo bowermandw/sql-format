@@ -263,3 +263,24 @@ describe('assignment expression wrapping', () => {
     expect(result).not.toMatch(/some_column_name_here\n\s*= /);
   });
 });
+
+// ---- LIKE ... ESCAPE ----
+
+describe('LIKE ESCAPE clause', () => {
+  it('preserves ESCAPE clause on a LIKE expression', () => {
+    const result = formatSQL("SELECT col1 FROM t WHERE column1 LIKE @pattern ESCAPE '\\'");
+    expect(result).toContain("column1 LIKE @pattern ESCAPE '\\'");
+  });
+
+  it('preserves ESCAPE clause on NOT LIKE', () => {
+    const result = formatSQL("SELECT * FROM t WHERE col NOT LIKE '%50!%%' ESCAPE '!'");
+    expect(result).toContain("col NOT LIKE '%50!%%' ESCAPE '!'");
+  });
+
+  it('keeps ESCAPE clause inside a parenthesized OR condition', () => {
+    const result = formatSQL("SELECT col1 FROM t WHERE (@p IS NULL OR column1 LIKE @p ESCAPE '\\')");
+    expect(result).toContain("column1 LIKE @p ESCAPE '\\'");
+    // ESCAPE must not leak out as a stray token after a closing paren
+    expect(result).not.toMatch(/\)\s*ESCAPE/);
+  });
+});

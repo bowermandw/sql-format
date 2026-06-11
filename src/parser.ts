@@ -1851,8 +1851,14 @@ class Parser {
         op = this.advance();
       }
       const right = this.parseAddSub();
-      left = { type: 'expression', left, operator: op, right } as ExpressionNode;
-      return left;
+      const expr = { type: 'expression', left, operator: op, right } as ExpressionNode;
+      // Optional ESCAPE clause: LIKE pattern ESCAPE 'escape_char'
+      if (this.isWord('ESCAPE')) {
+        const escapeToken = this.advance();
+        const value = this.parseAddSub();
+        expr.escape = { escapeToken, value };
+      }
+      return expr;
     }
 
     // IS [NOT] NULL

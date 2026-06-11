@@ -293,6 +293,8 @@ export interface ExpressionNode {
   left: SqlNode;
   operator: Token;
   right: SqlNode;
+  /** Optional ESCAPE clause for LIKE expressions: `... LIKE pattern ESCAPE '\'` */
+  escape?: { escapeToken: Token; value: SqlNode };
 }
 
 export interface FunctionCallNode {

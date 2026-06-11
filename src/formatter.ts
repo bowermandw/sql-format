@@ -257,7 +257,7 @@ class Formatter {
         return undefined;
       }
       case 'literal': return node.token;
-      case 'expression': return this.getLastToken(node.right);
+      case 'expression': return node.escape ? this.getLastToken(node.escape.value) : this.getLastToken(node.right);
       case 'functionCall': {
         if (node.alias) return node.alias.name;
         return undefined; // closing paren isn't stored as a token
@@ -2572,6 +2572,9 @@ class Formatter {
     // Special: IS, IS NOT, LIKE, NOT LIKE
     if (opUpper === 'IS' || opUpper === 'IS NOT' || opUpper === 'LIKE' || opUpper.startsWith('NOT ')) {
       result = `${left}${opPrefix}${this.kw(opUpper)} ${right}`;
+      if (node.escape) {
+        result += ` ${this.kw('ESCAPE')} ${this.formatNode(node.escape.value)}`;
+      }
     }
     // Comparison and arithmetic operators — add spaces around them
     else if (this.config.operators.comparison.addSpacesAroundComparisonOperators &&
