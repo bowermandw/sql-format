@@ -5,6 +5,7 @@ import {
   formatSql, mergeConfig, DEFAULT_CONFIG, FormatConfig,
   analyzeSql, Warning, AnalyzeOptions,
 } from '../../src/api';
+import { registerAutoUpdate } from './updater';
 
 const AUTO_DETECT_FILENAME = '.sqlformat.json';
 
@@ -71,6 +72,8 @@ export function activate(context: vscode.ExtensionContext): void {
   for (const doc of vscode.workspace.textDocuments) {
     refreshDiagnostics(doc);
   }
+
+  registerAutoUpdate(context);
 }
 
 export function deactivate(): void {

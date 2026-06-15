@@ -2,7 +2,7 @@
   "name": "sql-format-vscode",
   "displayName": "T-SQL Format",
   "description": "Format T-SQL using sql-format with RedGate-compatible JSON style configs",
-  "version": "0.1.3",
+  "version": "0.1.6",
   "publisher": "meraki-digital",
   "engines": {
     "vscode": "^1.80.0"
@@ -11,8 +11,13 @@
     "Formatters"
   ],
   "main": "./out/extension.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bowermandw/sql-format.git"
+  },
   "activationEvents": [
-    "onLanguage:sql"
+    "onLanguage:sql",
+    "onStartupFinished"
   ],
   "contributes": {
     "commands": [
@@ -20,11 +25,21 @@
         "command": "sqlFormat.formatDocument",
         "title": "Format SQL Document",
         "category": "T-SQL Format"
+      },
+      {
+        "command": "sqlFormat.checkForUpdates",
+        "title": "Check for Updates",
+        "category": "T-SQL Format"
       }
     ],
     "configuration": {
       "title": "T-SQL Format",
       "properties": {
+        "sqlFormat.checkForUpdates": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Automatically check the [GitHub releases](https://github.com/bowermandw/sql-format/releases) for a newer version of this extension on startup (at most once per day) and offer to install it. Run the **T-SQL Format: Check for Updates** command to check manually at any time."
+        },
         "sqlFormat.styleFile": {
           "type": "string",
           "default": "",
