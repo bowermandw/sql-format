@@ -17,6 +17,11 @@ RedGate-compatible JSON style configs.
   missing `SET NOCOUNT ON`, missing column nullability, `INSERT…SELECT` column
   mapping) appear as squiggles and in the **Problems** panel, updating as you type —
   independent of formatting.
+- **Auto-update from GitHub Releases.** Since the extension is distributed via
+  [GitHub Releases](https://github.com/bowermandw/sql-format/releases) rather than the
+  Marketplace, it checks for a newer release on startup (at most once per day) and
+  offers to download, install, and reload. Run **T-SQL Format: Check for Updates**
+  (`sqlFormat.checkForUpdates`) to check on demand.
 
 ## Configuration
 
@@ -26,6 +31,7 @@ RedGate-compatible JSON style configs.
 |---------|---------|-------------|
 | `sqlFormat.styleFile` | `""` | Path to a JSON style config. Relative paths resolve against the workspace folder. |
 | `sqlFormat.autoDetectStyleFile` | `true` | When no style file is set, use a `.sqlformat.json` in the workspace root if present. |
+| `sqlFormat.checkForUpdates` | `true` | Check GitHub Releases for a newer version on startup (once per day) and offer to install it. Disable to only update via the manual command. |
 
 Config resolution order per format: `styleFile` → auto-detected `.sqlformat.json`
 → built-in defaults. The style file is read on every format, so edits take effect
@@ -71,12 +77,17 @@ Press <kbd>F5</kbd> in VS Code to launch an Extension Development Host, open a
 ## Package a VSIX
 
 ```bash
-npm run build
-npm run package      # -> sql-format-vscode-<version>.vsix
+npm install          # first time only
+npm run package      # bundles, then writes sql-format-vscode-<version>.vsix
 ```
 
-Install with `code --install-extension sql-format-vscode-<version>.vsix` or via
-the Extensions view → "Install from VSIX…".
+`npm run package` runs the esbuild bundle and `vsce package` in one step (no
+separate `npm run build` needed). The `.vsix` is written to this directory, named
+from the `version` in `package.json`.
+
+Install it with `code --install-extension sql-format-vscode-<version>.vsix` or via
+the Extensions view → "Install from VSIX…". (The published release VSIX comes from
+the `Release VSIX` GitHub Action, which runs the same command on each `v*` tag.)
 
 ## How it bundles
 
