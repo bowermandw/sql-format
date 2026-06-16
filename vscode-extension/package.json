@@ -2,7 +2,7 @@
   "name": "sql-format-vscode",
   "displayName": "T-SQL Format",
   "description": "Format T-SQL using sql-format with RedGate-compatible JSON style configs",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "meraki-digital",
   "engines": {
     "vscode": "^1.80.0"
