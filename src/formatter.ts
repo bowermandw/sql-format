@@ -863,17 +863,29 @@ class Formatter {
 
     const leadingCommas = this.config.lists.commas.placeCommasBeforeItems;
 
+    // The semicolon (and its trailing comment) only attach to the column list
+    // when the column list is the last thing in the statement. If any
+    // subsequent clause follows (FROM/INTO/WHERE/GROUP BY/HAVING/ORDER BY/UNION),
+    // the semicolon belongs at the end of the statement and formatStatement
+    // handles its trailing comment instead.
+    const columnsAreLastClause = !(
+      node.into || node.from || node.where || node.groupBy ||
+      node.having || node.orderBy || node.union
+    );
+
     // Build per-column inline comment: for item i, the comment to show after
     // its comma comes from commaCommentTokens[i+1]; for the last item, use trailingCommentTokens
     // or the semicolon trailing comment (propagated from INSERT/parent statement)
-    const semiTrailingComment = (node as any)._semicolonTrailingComment as Token | undefined;
+    const semiTrailingComment = columnsAreLastClause
+      ? ((node as any)._semicolonTrailingComment as Token | undefined)
+      : undefined;
     const inlineComments: (Token | undefined)[] = node.columns.map((_, i) => {
       if (i < node.columns.length - 1) return commaCommentTokens[i + 1];
       return trailingCommentTokens[i] || semiTrailingComment;
     });
 
     // Check if a semicolon will be appended to the last line
-    const lastHasSemicolon = semiTrailingComment ? true : (node as any)._hasSemicolon ? true : false;
+    const lastHasSemicolon = semiTrailingComment ? true : (columnsAreLastClause && (node as any)._hasSemicolon) ? true : false;
     // Whether we need to handle the semicolon ourselves (so it appears before any trailing comment)
     const lastComment = semiTrailingComment || trailingCommentTokens[node.columns.length - 1];
     const handleSemicolonInSelect = lastHasSemicolon && !!lastComment;
