@@ -292,3 +292,32 @@ describe('non-standard variable names in expressions', () => {
     expect(result).toContain('a & b');
   });
 });
+
+describe('trailing comment on statement-terminating semicolon', () => {
+  it('keeps a semicolon trailing comment at the end of an ORDER BY, not on the SELECT list', () => {
+    const sql = [
+      'SELECT TOP (1)',
+      '    @a = [t].[a],',
+      '    @b = [t].[b]',
+      'FROM [dbo].[t] AS [t]',
+      'ORDER BY [t].[a]; -- earliest first',
+    ].join('\n');
+    const result = formatSQL(sql, { whitespace: { insertSemicolons: 'asis' } });
+    // The comment must trail the ORDER BY line, not the column list
+    expect(result).toMatch(/ORDER BY[\s\S]*\[t\]\.\[a\]; -- earliest first/);
+    expect(result).not.toMatch(/@b = \[t\]\.\[b\][;\s]*-- earliest first/);
+  });
+
+  it('keeps a semicolon trailing comment at the end of a WHERE clause', () => {
+    const sql = 'SELECT @a = [t].[a] FROM [dbo].[t] AS [t] WHERE [t].[a] > 0; -- only positive';
+    const result = formatSQL(sql, { whitespace: { insertSemicolons: 'asis' } });
+    expect(result).toMatch(/\[t\]\.\[a\] > 0; -- only positive/);
+    expect(result).not.toContain('@a = [t].[a]; -- only positive');
+  });
+
+  it('still attaches the semicolon trailing comment to the column list when SELECT has no other clauses', () => {
+    const sql = 'SELECT @a = 1; -- assign';
+    const result = formatSQL(sql, { whitespace: { insertSemicolons: 'asis' } });
+    expect(result).toContain('@a = 1; -- assign');
+  });
+});
