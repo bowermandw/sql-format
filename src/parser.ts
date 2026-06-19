@@ -744,6 +744,13 @@ class Parser {
           }
         } else if (firstWord === 'PRIMARY' && this.isWord('KEY')) {
           tokens.push(this.advance()); // KEY
+        } else if (firstWord === 'CONSTRAINT') {
+          // Named constraint: consume the constraint name. The constraint body
+          // that follows (DEFAULT (...), PRIMARY KEY, UNIQUE, CHECK (...), etc.)
+          // is handled on subsequent iterations of the loop.
+          if (!this.isEOF() && !this.isType(TokenType.Comma) && !this.isType(TokenType.RightParen)) {
+            tokens.push(this.advance()); // constraint name
+          }
         } else if (firstWord === 'DEFAULT') {
           // Consume the default value (could be a literal, function call, etc.)
           if (!this.isType(TokenType.Comma) && !this.isType(TokenType.RightParen) &&

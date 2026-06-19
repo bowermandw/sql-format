@@ -294,6 +294,26 @@ describe('COLLATE in column definitions', () => {
   });
 });
 
+describe('named inline column constraints', () => {
+  it('CONSTRAINT name + DEFAULT preserves name and is not split into a new column', () => {
+    const result = formatSQL("CREATE TABLE dbo.t (col CHAR(1) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL CONSTRAINT [df_name] DEFAULT ('Y'))");
+    expect(result).toContain("CONSTRAINT [df_name] DEFAULT ('Y')");
+    expect(result).not.toContain('MISSING_DATATYPE');
+  });
+
+  it('CONSTRAINT name + PRIMARY KEY', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (id INT NOT NULL CONSTRAINT [pk_t] PRIMARY KEY)');
+    expect(result).toContain('CONSTRAINT [pk_t] PRIMARY KEY');
+    expect(result).not.toContain('MISSING_DATATYPE');
+  });
+
+  it('CONSTRAINT name + CHECK', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (qty INT CONSTRAINT [ck_qty] CHECK (qty > 0))');
+    expect(result).toContain('CONSTRAINT [ck_qty] CHECK (qty > 0)');
+    expect(result).not.toContain('MISSING_DATATYPE');
+  });
+});
+
 // ---- Comments in column definitions ----
 
 describe('comments in CREATE TABLE / DECLARE TABLE column definitions', () => {

@@ -788,6 +788,10 @@ class Formatter {
     // single-line and multi-line items are compared on equal footing.
     let aliasAlignWidth: number | undefined;
     if (this.config.lists.alignAliases) {
+      // Width measurement formats expressions purely to size them; it must not
+      // consume comments (e.g. leading comments on a column), or the real
+      // render below would skip them as already-emitted and drop them.
+      const savedComments = this.saveEmittedComments();
       let maxExprWidth = 0;
       const clauseIndentLen = this.indentStr(baseIndent + 1).length;
       const indentLevel = baseIndent + 1;
@@ -831,6 +835,7 @@ class Formatter {
         }
       }
       this.indent = savedIndent;
+      this.restoreEmittedComments(savedComments);
       if (maxExprWidth > 0) aliasAlignWidth = maxExprWidth;
     }
 
