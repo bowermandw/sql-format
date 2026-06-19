@@ -72,6 +72,13 @@ describe('lists.alignAliases', () => {
       expect(asPositions[0]).not.toBe(asPositions[1]);
     }
   });
+
+  it('preserves a leading comment before an aliased column', () => {
+    // The alias-width measurement pass must not consume the comment.
+    const sql = 'SELECT a.c1,\n-- alias.col3,\nSUM(a.c4) AS amount FROM t2 a';
+    const result = formatSQL(sql, base);
+    expect(result).toContain('-- alias.col3,');
+  });
 });
 
 // ---- lists.commas.placeCommasBeforeItems ----
