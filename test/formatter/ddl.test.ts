@@ -59,23 +59,52 @@ describe('ddl.alignDataTypesAndConstraints', () => {
 // ---- CREATE TABLE with bracketed data types ----
 
 describe('CREATE TABLE with bracketed data types', () => {
+  // Default config has casing.builtInDataTypes = 'uppercase', so the datatype
+  // name is recased even when bracketed (brackets and precision preserved).
   it('handles bracketed data types with precision', () => {
     const sql = 'CREATE TABLE #t ([column1] [varchar](50) NOT NULL, [column2] [varchar](50) NULL)';
     const result = formatSQL(sql);
-    expect(result).toContain('[column1] [varchar](50) NOT NULL');
-    expect(result).toContain('[column2] [varchar](50) NULL');
+    expect(result).toContain('[column1] [VARCHAR](50) NOT NULL');
+    expect(result).toContain('[column2] [VARCHAR](50) NULL');
   });
 
   it('handles bracketed data types with scale', () => {
     const sql = 'CREATE TABLE #t ([col1] [decimal](10, 2) NOT NULL)';
     const result = formatSQL(sql);
-    expect(result).toContain('[col1] [decimal](10, 2) NOT NULL');
+    expect(result).toContain('[col1] [DECIMAL](10, 2) NOT NULL');
   });
 
   it('handles bracketed data types with MAX', () => {
     const sql = 'CREATE TABLE #t ([col1] [nvarchar](MAX) NULL)';
     const result = formatSQL(sql);
-    expect(result).toContain('[col1] [nvarchar](MAX) NULL');
+    expect(result).toContain('[col1] [NVARCHAR](MAX) NULL');
+  });
+
+  it('applies builtInDataTypes casing to bracketed data types', () => {
+    const sql = 'CREATE TABLE #t ([a] [int] NOT NULL, [b] [varchar](50) NULL)';
+    const upper = formatSQL(sql, { casing: { builtInDataTypes: 'uppercase' } });
+    expect(upper).toContain('[a] [INT] NOT NULL');
+    expect(upper).toContain('[b] [VARCHAR](50) NULL');
+
+    const lower = formatSQL(sql, { casing: { builtInDataTypes: 'lowercase' } });
+    expect(lower).toContain('[a] [int] NOT NULL');
+    expect(lower).toContain('[b] [varchar](50) NULL');
+  });
+
+  it('strips brackets and cases data types with encloseDataTypes withoutBrackets', () => {
+    const sql = 'CREATE TABLE #t ([a] [int], [b] [varchar](50))';
+    const result = formatSQL(sql, {
+      casing: { builtInDataTypes: 'uppercase' },
+      dataTypes: { encloseDataTypes: 'withoutBrackets' },
+    });
+    expect(result).toContain('[a] INT');
+    expect(result).toContain('[b] VARCHAR(50)');
+  });
+
+  it('preserves the case of user-defined (non-builtin) bracketed types', () => {
+    const sql = 'CREATE TABLE #t ([a] [MyType] NOT NULL)';
+    const result = formatSQL(sql, { casing: { builtInDataTypes: 'uppercase' } });
+    expect(result).toContain('[a] [MyType] NOT NULL');
   });
 });
 

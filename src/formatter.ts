@@ -1,7 +1,7 @@
 import { Token, TokenType } from './tokens';
 import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, UseNode, ThrowNode, RaiserrorNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode, DeclareCursorNode, SetCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode } from './ast';
 import { FormatConfig } from './config';
-import { caseWord, categorizeWord } from './casing';
+import { caseWord, categorizeWord, applyCase } from './casing';
 
 export function format(ast: BatchNode, config: FormatConfig): string {
   const f = new Formatter(config);
@@ -2774,6 +2774,27 @@ class Formatter {
    * enclosure per the dataTypes.encloseDataTypes config.
    */
   private formatDataType(node: SqlNode): string {
+    // Datatype with precision/scale, e.g. VARCHAR(50), DECIMAL(10, 2), [varchar](50)
+    if (node.type === 'functionCall') {
+      const fn = node as FunctionCallNode;
+      const nameToken = (fn.name as IdentifierNode).parts[0];
+      if (nameToken) {
+        const name = this.formatDataTypeName(nameToken);
+        const args = fn.args.map(a => this.formatNode(a)).join(', ');
+        return `${name}(${args})`;
+      }
+    }
+
+    // Simple datatype, e.g. INT, [datetime]
+    if (node.type === 'identifier') {
+      const id = node as IdentifierNode;
+      if (id.parts.length === 1) {
+        return this.formatDataTypeName(id.parts[0]);
+      }
+    }
+
+    // Fallback for any other shape (e.g. RawTokenNode): format then apply
+    // bracket enclosure via string manipulation.
     const mode = this.config.dataTypes.encloseDataTypes;
     const formatted = this.formatNode(node);
 
@@ -2797,6 +2818,37 @@ class Formatter {
     }
 
     return formatted;
+  }
+
+  /**
+   * Format the name portion of a data type, applying datatype casing
+   * (casing.builtInDataTypes) independently of bracket enclosure
+   * (dataTypes.encloseDataTypes). Unlike identifier formatting, this recases
+   * the inner name even when the source token is bracketed (e.g. [int] → [INT]),
+   * since a bracketed builtin datatype is still a datatype. User-defined types
+   * (not recognized builtins) keep their original case.
+   */
+  private formatDataTypeName(token: Token): string {
+    const { prefix, suffix } = this.tokenComments(token);
+    const wasQuoted = token.type === TokenType.QuotedIdentifier;
+    const bare = wasQuoted ? stripQuoting(token.value) : token.value;
+
+    const cased = categorizeWord(bare) === 'dataType'
+      ? applyCase(bare, this.config.casing.builtInDataTypes)
+      : bare;
+
+    const mode = this.config.dataTypes.encloseDataTypes;
+    let enclosed: string;
+    if (mode === 'withBrackets') {
+      enclosed = '[' + cased + ']';
+    } else if (mode === 'withoutBrackets') {
+      enclosed = cased;
+    } else {
+      // asis: preserve the source bracketing
+      enclosed = wasQuoted ? '[' + cased + ']' : cased;
+    }
+
+    return prefix + enclosed + suffix;
   }
 
   // --- Identifiers ---

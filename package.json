@@ -1,6 +1,6 @@
 {
   "name": "sql-format",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "T-SQL formatter driven by RedGate-compatible style configs",
   "main": "dist/index.js",
   "bin": {
