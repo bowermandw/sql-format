@@ -183,3 +183,15 @@ describe('SET compound assignment', () => {
     expect(formatSQL('SET @x = 3').trim()).toBe('SET @x = 3');
   });
 });
+
+// ---- bracketed data type casing on DECLARE ----
+
+describe('DECLARE bracketed data type casing', () => {
+  it('applies builtInDataTypes casing to bracketed variable data types', () => {
+    const result = formatSQL('DECLARE @x [int], @y [varchar](50)', {
+      casing: { builtInDataTypes: 'uppercase' },
+    });
+    expect(result).toContain('@x [INT]');
+    expect(result).toContain('@y [VARCHAR](50)');
+  });
+});
