@@ -20,6 +20,44 @@ cat input.sql | node dist/index.js --style s.json  # stdin
 
 CLI flags: `--style/-s`, `--enclose-identifiers/-e`, `--enclose-datatypes/-d`, `--insert-semicolons/-c`, `--line-ending/-l`, `--in-place/-i`, `--tokens/-t` (debug), `--ast/-a` (debug)
 
+## Versioning & Release
+
+**A version bump must land in the change commit, before the PR is merged** — never as
+a follow-up commit on `main`. Always bump with the script, never by hand-editing a
+`package.json`:
+
+```bash
+npm run bump 0.1.11        # or: patch | minor | major
+npm run check-versions     # verifies every file agrees
+```
+
+`npm run bump` updates all four version-bearing files at once:
+
+| File | |
+|------|--|
+| `package.json` | formatter / CLI |
+| `package-lock.json` | |
+| `vscode-extension/package.json` | drives the `.vsix` filename and the extension's auto-update check |
+| `vscode-extension/package-lock.json` | |
+
+Add any new package to `VERSION_FILES` / `PACKAGE_DIRS` in `scripts/versions.mjs` so
+the bump and the check keep covering the whole repo.
+
+Guards (both run `scripts/check-versions.mjs`):
+
+- **`.github/workflows/ci.yml`** — on every PR to `main`: versions agree, then build + tests.
+- **`.github/workflows/release.yml`** — on a `v*` tag: the committed versions must equal
+  the tag, the tag must be an ancestor of `main`, then it packages the VSIX and creates
+  the GitHub release. It does *not* patch versions for you, so a missed bump fails the
+  release instead of shipping a mislabelled VSIX.
+
+Releasing, once the version-bumped PR is merged:
+
+```bash
+git checkout main && git pull
+git tag -a v0.1.11 -m "v0.1.11" && git push origin v0.1.11
+```
+
 ## Architecture
 
 Three-stage pipeline: `SQL Text → Tokenizer → Token[] → Parser → AST (BatchNode) → Formatter → Formatted SQL`

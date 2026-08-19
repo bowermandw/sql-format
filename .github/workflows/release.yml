@@ -30,13 +30,12 @@ jobs:
         with:
           node-version: 20
 
+      - name: Verify committed versions match the tag
+        run: node scripts/check-versions.mjs --expect "${GITHUB_REF_NAME#v}"
+
       - name: Install extension dependencies
         working-directory: vscode-extension
         run: npm ci
-
-      - name: Sync extension version to tag
-        working-directory: vscode-extension
-        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
       - name: Build and package VSIX
         working-directory: vscode-extension
