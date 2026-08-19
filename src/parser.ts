@@ -1,4 +1,5 @@
 import { Token, TokenType } from './tokens';
+import { RESERVED_KEYWORDS } from './casing';
 import {
   SqlNode, BatchNode, SelectNode, CreateProcedureNode, ProcParameter,
   BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, UseNode, ThrowNode, RaiserrorNode,
@@ -8,6 +9,7 @@ import {
   ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode,
   AlterTableNode, PivotNode,
   DeclareCursorNode, SetCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode,
+  TransactionNode,
 } from './ast';
 
 /** Operator characters that some generated/legacy code embeds in identifiers
@@ -256,9 +258,22 @@ class Parser {
       return this.parseDelete();
     }
 
+    // BEGIN TRAN / BEGIN TRANSACTION / BEGIN DISTRIBUTED TRAN[SACTION]
+    if (upper === 'BEGIN' && this.isTransactionKeywordAt(this.isWordAt(1, 'DISTRIBUTED') ? 2 : 1)) {
+      return this.parseTransaction();
+    }
+
     // BEGIN...END
     if (upper === 'BEGIN') {
       return this.parseBeginEnd();
+    }
+
+    // COMMIT / ROLLBACK [TRAN | TRANSACTION | WORK], SAVE TRAN
+    if (upper === 'COMMIT' || upper === 'ROLLBACK') {
+      return this.parseTransaction();
+    }
+    if (upper === 'SAVE' && this.isTransactionKeywordAt(1)) {
+      return this.parseTransaction();
     }
 
     // IF...ELSE
@@ -635,7 +650,7 @@ class Parser {
         if (this.isType(TokenType.Comma)) { this.advanceComma(); continue; }
         // Constraint or column def
         if (this.isWord('CONSTRAINT') || this.isWord('PRIMARY') || this.isWord('FOREIGN') ||
-            this.isWord('UNIQUE') || this.isWord('CHECK')) {
+            this.isWord('UNIQUE') || this.isWord('CHECK') || this.isWord('INDEX')) {
           columns.push(this.parseTableConstraint());
         } else {
           columns.push(this.parseColumnDef());
@@ -950,7 +965,8 @@ class Parser {
             'CROSS', 'ON', 'SET', 'VALUES', 'END', 'ELSE', 'WHEN', 'THEN',
             'AS', 'GO', 'BEGIN', 'IF', 'WHILE', 'DECLARE', 'PRINT', 'RETURN', 'EXEC',
             'EXECUTE', 'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP',
-            'TRUNCATE', 'WITH', 'FOR', 'PIVOT', 'UNPIVOT'].includes(val);
+            'TRUNCATE', 'WITH', 'FOR', 'PIVOT', 'UNPIVOT',
+            'COMMIT', 'ROLLBACK', 'SAVE', 'THROW', 'RAISERROR'].includes(val);
   }
 
   // --- FROM / JOIN ---
@@ -1503,7 +1519,7 @@ class Parser {
         while (!this.isEOF() && !this.isType(TokenType.RightParen)) {
           if (this.isType(TokenType.Comma)) { this.advanceComma(); continue; }
           if (this.isWord('CONSTRAINT') || this.isWord('PRIMARY') || this.isWord('FOREIGN') ||
-              this.isWord('UNIQUE') || this.isWord('CHECK')) {
+              this.isWord('UNIQUE') || this.isWord('CHECK') || this.isWord('INDEX')) {
             tableColumns.push(this.parseTableConstraint());
           } else {
             tableColumns.push(this.parseColumnDef());
@@ -1737,6 +1753,48 @@ class Parser {
 
     // Fallback for other DROP statements (DROP INDEX, DROP VIEW, etc.)
     return this.consumeRestAsRaw(keywords);
+  }
+
+  /** True when the token at `offset` is TRAN, TRANSACTION or WORK. */
+  private isTransactionKeywordAt(offset: number): boolean {
+    return this.isWordAt(offset, 'TRAN') || this.isWordAt(offset, 'TRANSACTION') ||
+           this.isWordAt(offset, 'WORK');
+  }
+
+  /** BEGIN/COMMIT/ROLLBACK/SAVE TRAN[SACTION] [name] [WITH ...] */
+  private parseTransaction(): TransactionNode {
+    const keywords: Token[] = [this.advance()]; // BEGIN | COMMIT | ROLLBACK | SAVE
+    if (this.isWord('DISTRIBUTED')) keywords.push(this.advance());
+    if (this.isTransactionKeywordAt(0)) keywords.push(this.advance()); // TRAN | TRANSACTION | WORK
+
+    // Optional transaction / savepoint name (bare COMMIT and ROLLBACK have none)
+    let name: Token | undefined;
+    if (this.isType(TokenType.QuotedIdentifier) ||
+        (this.current().type === TokenType.Word &&
+         !RESERVED_KEYWORDS.has(this.current().value.toUpperCase()))) {
+      name = this.advance();
+    }
+
+    // WITH MARK 'description' | WITH (DELAYED_DURABILITY = ON)
+    let withTokens: Token[] | undefined;
+    if (this.isWord('WITH')) {
+      withTokens = [this.advance()]; // WITH
+      if (this.isType(TokenType.LeftParen)) {
+        withTokens.push(this.advance()); // (
+        let depth = 1;
+        while (!this.isEOF() && depth > 0) {
+          if (this.isType(TokenType.LeftParen)) depth++;
+          if (this.isType(TokenType.RightParen)) depth--;
+          withTokens.push(this.advance());
+        }
+      } else {
+        while (!this.isEOF() && (this.isWord('MARK') || this.isType(TokenType.StringLiteral))) {
+          withTokens.push(this.advance());
+        }
+      }
+    }
+
+    return { type: 'transaction', keywords, name, withTokens };
   }
 
   private parseTruncate(): SqlNode {

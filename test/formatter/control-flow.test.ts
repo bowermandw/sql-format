@@ -324,3 +324,90 @@ describe('EXISTS subquery formatting', () => {
     expect(result).toContain('\n    );');
   });
 });
+
+// ---- Transaction statements ----
+
+describe('transaction statements', () => {
+  it('formats BEGIN TRAN without opening a BEGIN...END block', () => {
+    const result = formatSQL('begin tran\nupdate t set a = 1\ncommit tran');
+    expect(result.trimEnd()).toBe('BEGIN TRAN\nUPDATE t SET a = 1\nCOMMIT TRAN');
+  });
+
+  it('formats BEGIN TRANSACTION / ROLLBACK TRANSACTION', () => {
+    const result = formatSQL('begin transaction\ndelete from t\nrollback transaction');
+    expect(result.trimEnd()).toBe('BEGIN TRANSACTION\nDELETE FROM t\nROLLBACK TRANSACTION');
+  });
+
+  it('keeps a named transaction on one line', () => {
+    expect(formatSQL('begin tran MyTran').trimEnd()).toBe('BEGIN TRAN MyTran');
+    expect(formatSQL('commit transaction MyTran').trimEnd()).toBe('COMMIT TRANSACTION MyTran');
+    expect(formatSQL('rollback tran MyTran').trimEnd()).toBe('ROLLBACK TRAN MyTran');
+  });
+
+  it('supports a transaction name held in a variable', () => {
+    expect(formatSQL('begin tran @name').trimEnd()).toBe('BEGIN TRAN @name');
+  });
+
+  it('formats bare COMMIT and ROLLBACK', () => {
+    expect(formatSQL('commit').trimEnd()).toBe('COMMIT');
+    expect(formatSQL('rollback').trimEnd()).toBe('ROLLBACK');
+  });
+
+  it('does not swallow the following statement after a bare ROLLBACK', () => {
+    const result = formatSQL('rollback\nselect 1');
+    expect(result.trimEnd()).toBe('ROLLBACK\nSELECT 1');
+  });
+
+  it('does not swallow THROW after ROLLBACK TRAN', () => {
+    const result = formatSQL('rollback tran\nthrow');
+    expect(result.trimEnd()).toBe('ROLLBACK TRAN\nTHROW');
+  });
+
+  it('formats SAVE TRAN with a savepoint name', () => {
+    expect(formatSQL('save tran sp1').trimEnd()).toBe('SAVE TRAN sp1');
+  });
+
+  it('formats BEGIN DISTRIBUTED TRANSACTION', () => {
+    expect(formatSQL('begin distributed transaction').trimEnd()).toBe('BEGIN DISTRIBUTED TRANSACTION');
+  });
+
+  it('formats COMMIT WORK and ROLLBACK WORK', () => {
+    expect(formatSQL('commit work').trimEnd()).toBe('COMMIT WORK');
+    expect(formatSQL('rollback work').trimEnd()).toBe('ROLLBACK WORK');
+  });
+
+  it('formats WITH MARK on BEGIN TRANSACTION', () => {
+    expect(formatSQL("begin transaction with mark 'my mark'").trimEnd()).toBe("BEGIN TRANSACTION WITH MARK 'my mark'");
+  });
+
+  it('formats WITH (DELAYED_DURABILITY = ON) on COMMIT', () => {
+    expect(formatSQL('commit transaction with (delayed_durability = on)').trimEnd())
+      .toBe('COMMIT TRANSACTION WITH (DELAYED_DURABILITY = ON)');
+  });
+
+  it('applies lowercase keyword casing to transaction keywords', () => {
+    const result = formatSQL('BEGIN TRAN T1', { casing: { reservedKeywords: 'lowercase' } });
+    expect(result.trimEnd()).toBe('begin tran T1');
+  });
+
+  it('indents transaction statements inside a BEGIN...END block', () => {
+    const result = formatSQL('if @x = 1\nbegin\nbegin tran\ncommit tran\nend');
+    expect(result).toContain('    BEGIN TRAN');
+    expect(result).toContain('    COMMIT TRAN');
+  });
+
+  it('does not take COMMIT as a table alias', () => {
+    const result = formatSQL('begin tran\nselect a from t\ncommit tran');
+    expect(result.trimEnd()).toBe('BEGIN TRAN\nSELECT a FROM t\nCOMMIT TRAN');
+  });
+
+  it('does not take ROLLBACK as a table alias', () => {
+    const result = formatSQL('select a from t\nrollback');
+    expect(result.trimEnd()).toBe('SELECT a FROM t\nROLLBACK');
+  });
+
+  it('adds semicolons to transaction statements when configured', () => {
+    const result = formatSQL('begin tran\ncommit tran', { whitespace: { insertSemicolons: 'insert' } });
+    expect(result.trimEnd()).toBe('BEGIN TRAN;\nCOMMIT TRAN;');
+  });
+});

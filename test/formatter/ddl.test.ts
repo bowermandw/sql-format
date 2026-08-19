@@ -417,3 +417,47 @@ describe('hyphenated identifiers in name positions', () => {
     expect(result).toContain('@XX_A&B_Word VARCHAR(30) = NULL');
   });
 });
+
+// ---- Table-level constraints: qualified references & inline indexes ----
+
+describe('table constraint qualified names', () => {
+  it('keeps schema-qualified REFERENCES target unspaced', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (id INT, CONSTRAINT fkname FOREIGN KEY (id) REFERENCES schema1.table1 (id))');
+    expect(result).toContain('CONSTRAINT fkname FOREIGN KEY (id) REFERENCES schema1.table1 (id)');
+    expect(result).not.toContain(' . ');
+  });
+
+  it('keeps three-part REFERENCES target unspaced', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (b INT, CONSTRAINT fk_t FOREIGN KEY (b) REFERENCES other.dbo.tbl (id) ON DELETE CASCADE)');
+    expect(result).toContain('REFERENCES other.dbo.tbl (id) ON DELETE CASCADE');
+  });
+
+  it('keeps bracketed qualified REFERENCES target unspaced', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (id INT, FOREIGN KEY (id) REFERENCES [dbo].[Customers] (id))');
+    expect(result).toContain('REFERENCES [dbo].[Customers] (id)');
+  });
+
+  it('does not glue a string literal ending in a period to the next keyword', () => {
+    const result = formatSQL("CREATE TABLE dbo.t (msg VARCHAR(10), CONSTRAINT ck_msg CHECK (msg <> 'a.' AND msg <> 'b'))");
+    expect(result).toContain("'a.' AND");
+  });
+});
+
+describe('inline table indexes', () => {
+  it('keeps INDEX name CLUSTERED (col) as a single constraint', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (id INT, INDEX ixname CLUSTERED (id))');
+    expect(result).toContain('INDEX ixname CLUSTERED (id)');
+    expect(result).not.toContain('INDEX ixname,');
+  });
+
+  it('keeps INDEX name NONCLUSTERED with a filter predicate together', () => {
+    const result = formatSQL('CREATE TABLE dbo.t (b INT, INDEX ix_b NONCLUSTERED (b) WHERE b > 0)');
+    expect(result).toContain('INDEX ix_b NONCLUSTERED (b) WHERE b > 0');
+  });
+
+  it('keeps an inline INDEX in a table variable declaration', () => {
+    const result = formatSQL('DECLARE @v TABLE (id INT, INDEX ix (id))');
+    expect(result).toContain('INDEX ix (id)');
+    expect(result).not.toContain('INDEX ix,');
+  });
+});
