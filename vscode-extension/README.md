@@ -89,6 +89,11 @@ Install it with `code --install-extension sql-format-vscode-<version>.vsix` or v
 the Extensions view → "Install from VSIX…". (The published release VSIX comes from
 the `Release VSIX` GitHub Action, which runs the same command on each `v*` tag.)
 
+The version here must match the repo root's `package.json` and the release tag — bump
+both with `npm run bump <version>` from the repo root, in the same commit as your
+change. CI checks the versions agree on every PR, and the release workflow refuses a
+tag that does not match the committed version.
+
 ## How it bundles
 
 esbuild inlines `../../src/api.ts` (and the whole formatter) into a single
