@@ -43,6 +43,7 @@ export type SqlNode =
   | CloseCursorNode
   | FetchCursorNode
   | DeallocateCursorNode
+  | TransactionNode
   | RawTokenNode
   | ColumnListNode
   | PivotNode;
@@ -279,6 +280,14 @@ export interface FetchCursorNode {
   global?: Token;            // GLOBAL
   name: SqlNode;             // cursor_name or @cursor_variable
   into?: { token: Token; variables: SqlNode[] }; // INTO @var1, @var2
+}
+
+/** BEGIN/COMMIT/ROLLBACK/SAVE TRAN(SACTION) statement. */
+export interface TransactionNode {
+  type: 'transaction';
+  keywords: Token[];         // BEGIN TRAN | BEGIN DISTRIBUTED TRANSACTION | COMMIT TRAN | ROLLBACK TRANSACTION | SAVE TRAN | COMMIT WORK
+  name?: Token;              // transaction name, savepoint name, or @variable
+  withTokens?: Token[];      // WITH MARK 'description' | WITH (DELAYED_DURABILITY = ON)
 }
 
 export interface DeallocateCursorNode {

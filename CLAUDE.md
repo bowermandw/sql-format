@@ -6,7 +6,7 @@ T-SQL formatter driven by RedGate-compatible JSON style configs.
 
 ```bash
 npm run build        # tsc → dist/
-npm run test         # vitest run (352 tests)
+npm run test         # vitest run (657 tests)
 npm run test:watch   # vitest watch mode
 ```
 
@@ -31,9 +31,9 @@ Three-stage pipeline: `SQL Text → Tokenizer → Token[] → Parser → AST (Ba
 | `src/index.ts` | 226 | CLI entry point |
 | `src/tokens.ts` | 46 | Token types/interfaces |
 | `src/tokenizer.ts` | 375 | Lexer: SQL → Token[] |
-| `src/parser.ts` | 1690 | Recursive descent parser: Token[] → AST |
-| `src/ast.ts` | 312 | AST node type definitions |
-| `src/formatter.ts` | 2034 | AST → formatted SQL string |
+| `src/parser.ts` | 2445 | Recursive descent parser: Token[] → AST |
+| `src/ast.ts` | 422 | AST node type definitions |
+| `src/formatter.ts` | 3598 | AST → formatted SQL string |
 | `src/config.ts` | 379 | FormatConfig types, defaults, JSON loader |
 | `src/casing.ts` | 155 | Keyword/function/datatype casing logic |
 
@@ -62,7 +62,7 @@ Three-stage pipeline: `SQL Text → Tokenizer → Token[] → Parser → AST (Ba
 - **DML:** `SelectNode`, `InsertNode`, `UpdateNode`, `DeleteNode`
 - **DDL:** `CreateTableNode`, `AlterTableNode`, `DropTableNode`, `CreateProcedureNode`, `ColumnDefNode`, `ConstraintNode`
 - **Query parts:** `CteNode`, `JoinNode`, `WhereNode`, `GroupByNode`, `OrderByNode`, `HavingNode`
-- **Control flow:** `BeginEndNode`, `IfElseNode`, `CaseNode`, `DeclareNode`, `SetNode`, `PrintNode`, `ReturnNode`
+- **Control flow:** `BeginEndNode`, `IfElseNode`, `CaseNode`, `DeclareNode`, `SetNode`, `PrintNode`, `ReturnNode`, `TransactionNode` (BEGIN/COMMIT/ROLLBACK/SAVE TRAN)
 - **Expressions:** `ExpressionNode` (binary), `FunctionCallNode`, `InExpressionNode`, `BetweenNode`, `ExistsNode`
 - **Containers:** `ParenGroupNode` (subqueries/parens with optional PIVOT/alias), `IdentifierNode`, `LiteralNode`, `RawTokenNode`
 

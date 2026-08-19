@@ -1,5 +1,5 @@
 import { Token, TokenType } from './tokens';
-import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, UseNode, ThrowNode, RaiserrorNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode, DeclareCursorNode, SetCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode } from './ast';
+import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, UseNode, ThrowNode, RaiserrorNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode, DeclareCursorNode, SetCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode, TransactionNode } from './ast';
 import { FormatConfig } from './config';
 import { caseWord, categorizeWord, applyCase } from './casing';
 
@@ -147,6 +147,7 @@ class Formatter {
       case 'closeCursor':
       case 'fetchCursor':
       case 'deallocateCursor':
+      case 'transaction':
         return true;
       default:
         return false;
@@ -173,6 +174,7 @@ class Formatter {
       case 'closeCursor': return node.token;
       case 'fetchCursor': return node.token;
       case 'deallocateCursor': return node.token;
+      case 'transaction': return node.keywords[0];
       case 'beginEnd': return node.beginToken;
       case 'tryCatch': return node.tryBlock.beginToken;
       case 'ifElse': return node.ifToken;
@@ -242,6 +244,10 @@ class Formatter {
         return undefined;
       }
       case 'dropTable': return this.getLastToken(node.name);
+      case 'transaction': {
+        if (node.withTokens?.length) return node.withTokens[node.withTokens.length - 1];
+        return node.name ?? node.keywords[node.keywords.length - 1];
+      }
       case 'alterTable': {
         if (node.action.length > 0) return node.action[node.action.length - 1];
         return this.getLastToken(node.name);
@@ -465,6 +471,7 @@ class Formatter {
       case 'closeCursor': return this.formatCloseCursor(node);
       case 'fetchCursor': return this.formatFetchCursor(node);
       case 'deallocateCursor': return this.formatDeallocateCursor(node);
+      case 'transaction': return this.formatTransaction(node);
       case 'case': return this.formatCase(node);
       case 'expression': return this.formatExpression(node);
       case 'functionCall': return this.formatFunctionCall(node);
@@ -682,6 +689,8 @@ class Formatter {
         parts.push(')');
       } else if (t.type === TokenType.Comma) {
         parts.push(',');
+      } else if (t.type === TokenType.Dot) {
+        parts.push('.');
       } else if (t.type === TokenType.Word || t.type === TokenType.QuotedIdentifier) {
         // Collation names after COLLATE should never be bracketed
         const prevToken = i > 0 ? node.tokens[i - 1] : undefined;
@@ -700,8 +709,9 @@ class Formatter {
         parts.push(this.tokenValueWithComments(t));
       }
     }
-    // Join with spaces but collapse around commas and closing parens
+    // Join with spaces but collapse around commas, dots and closing parens
     let result = '';
+    let afterDot = false;
     for (const part of parts) {
       if (part === ')') {
         result = result.trimEnd();
@@ -709,12 +719,19 @@ class Formatter {
       } else if (part === ',') {
         result = result.trimEnd();
         result += ', ';
+      } else if (part === '.') {
+        // Qualified name (schema.table): no space on either side of the dot
+        result = result.trimEnd();
+        result += '.';
+        afterDot = true;
+        continue;
       } else {
-        if (result.length > 0 && !result.endsWith(' ') && !result.endsWith('(')) {
+        if (result.length > 0 && !afterDot && !result.endsWith(' ') && !result.endsWith('(')) {
           result += ' ';
         }
         result += part;
       }
+      afterDot = false;
     }
     return result.trimEnd();
   }
@@ -2350,6 +2367,36 @@ class Formatter {
   private formatDeallocateCursor(node: DeallocateCursorNode): string {
     const indent = this.indentStr();
     return indent + this.kw('DEALLOCATE') + ' ' + this.formatCursorRef(node.global, node.name);
+  }
+
+  // --- Transactions ---
+
+  private formatTransaction(node: TransactionNode): string {
+    let result = this.indentStr() + node.keywords.map(t => this.kwTokenWithComments(t)).join(' ');
+    if (node.name) result += ' ' + this.tokenValueWithComments(node.name);
+    if (node.withTokens?.length) {
+      for (const t of node.withTokens) {
+        if (t.type === TokenType.LeftParen) {
+          result += ' (';
+        } else if (t.type === TokenType.RightParen) {
+          result = result.trimEnd() + ')';
+        } else if (t.type === TokenType.Comma) {
+          result = result.trimEnd() + ',';
+        } else {
+          if (!result.endsWith('(')) result += ' ';
+          if (t.type === TokenType.Equals) {
+            result += '=';
+          } else if (t.type === TokenType.Word) {
+            // Every word in the WITH clause is a keyword (MARK, DELAYED_DURABILITY, ON/OFF)
+            const { prefix, suffix } = this.tokenComments(t);
+            result += prefix + applyCase(t.value, this.config.casing.reservedKeywords) + suffix;
+          } else {
+            result += this.tokenValueWithComments(t);
+          }
+        }
+      }
+    }
+    return result;
   }
 
   private formatFetchCursor(node: FetchCursorNode): string {
