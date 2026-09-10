@@ -461,3 +461,59 @@ describe('inline table indexes', () => {
     expect(result).not.toContain('INDEX ix,');
   });
 });
+
+// ---- DROP TABLE with multiple tables ----
+
+describe('DROP TABLE with a list of tables', () => {
+  it('keeps a comma-separated list on one line', () => {
+    const result = formatSQL('DROP TABLE #tt1, #tt2;');
+    expect(result.trim()).toBe('DROP TABLE #tt1, #tt2;');
+  });
+
+  it('brackets every table in the list', () => {
+    const result = formatSQL('DROP TABLE #tt1, #tt2;', {
+      identifiers: { encloseIdentifiers: 'withBrackets' },
+    });
+    expect(result.trim()).toBe('DROP TABLE [#tt1], [#tt2];');
+  });
+
+  it('brackets qualified names throughout the list', () => {
+    const result = formatSQL('DROP TABLE dbo.t1, dbo.t2, [x].[y];', {
+      identifiers: { encloseIdentifiers: 'withBrackets' },
+    });
+    expect(result.trim()).toBe('DROP TABLE [dbo].[t1], [dbo].[t2], [x].[y];');
+  });
+
+  it('handles a list after IF EXISTS', () => {
+    const result = formatSQL('DROP TABLE IF EXISTS #a, #b;', {
+      identifiers: { encloseIdentifiers: 'withBrackets' },
+    });
+    expect(result.trim()).toBe('DROP TABLE IF EXISTS [#a], [#b];');
+  });
+
+  it('strips brackets across the list when encloseIdentifiers is withoutBrackets', () => {
+    const result = formatSQL('DROP TABLE [dbo].[t1], [dbo].[t2];', {
+      identifiers: { encloseIdentifiers: 'withoutBrackets' },
+    });
+    expect(result.trim()).toBe('DROP TABLE dbo.t1, dbo.t2;');
+  });
+
+  it('does not leak list items onto their own lines', () => {
+    const result = formatSQL('DROP TABLE #tt1, #tt2;');
+    expect(result.trim().split('\n')).toHaveLength(1);
+  });
+
+  it('still formats a single table', () => {
+    const result = formatSQL('DROP TABLE #tt1;', {
+      identifiers: { encloseIdentifiers: 'withBrackets' },
+    });
+    expect(result.trim()).toBe('DROP TABLE [#tt1];');
+  });
+
+  it('keeps TRUNCATE TABLE working', () => {
+    const result = formatSQL('TRUNCATE TABLE dbo.t1;', {
+      identifiers: { encloseIdentifiers: 'withBrackets' },
+    });
+    expect(result.trim()).toBe('TRUNCATE TABLE [dbo].[t1];');
+  });
+});

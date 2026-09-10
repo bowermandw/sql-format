@@ -353,7 +353,7 @@ export interface CreateTableNode {
 export interface DropTableNode {
   type: 'dropTable';
   keywords: Token[];         // DROP, TABLE, IF, EXISTS
-  name: SqlNode;
+  names: SqlNode[];          // DROP TABLE accepts a comma-separated list
 }
 
 export interface AlterTableNode {

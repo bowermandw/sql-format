@@ -1747,8 +1747,13 @@ class Parser {
         }
       }
 
-      const name = this.parseQualifiedName();
-      return { type: 'dropTable', keywords, name } as DropTableNode;
+      // DROP TABLE accepts a comma-separated list of tables
+      const names: SqlNode[] = [this.parseQualifiedName()];
+      while (this.isType(TokenType.Comma)) {
+        this.advance(); // ,
+        names.push(this.parseQualifiedName());
+      }
+      return { type: 'dropTable', keywords, names } as DropTableNode;
     }
 
     // Fallback for other DROP statements (DROP INDEX, DROP VIEW, etc.)
@@ -1804,7 +1809,7 @@ class Parser {
     if (this.isWord('TABLE')) {
       keywords.push(this.advance()); // TABLE
       const name = this.parseQualifiedName();
-      return { type: 'dropTable', keywords, name } as DropTableNode;
+      return { type: 'dropTable', keywords, names: [name] } as DropTableNode;
     }
 
     return this.consumeRestAsRaw(keywords);
