@@ -148,6 +148,7 @@ class Formatter {
       case 'fetchCursor':
       case 'deallocateCursor':
       case 'transaction':
+      case 'cte':
         return true;
       default:
         return false;
