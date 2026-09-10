@@ -6,7 +6,7 @@ T-SQL formatter driven by RedGate-compatible JSON style configs.
 
 ```bash
 npm run build        # tsc → dist/
-npm run test         # vitest run (657 tests)
+npm run test         # vitest run (665 tests)
 npm run test:watch   # vitest watch mode
 ```
 

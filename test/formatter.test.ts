@@ -1354,6 +1354,63 @@ describe('CTE with bracket-quoted names', () => {
   });
 });
 
+// ---- CTE semicolons ----
+
+describe('CTE semicolons', () => {
+  it('appends a semicolon after a CTE statement when insertSemicolons is insert', () => {
+    const sql = 'WITH cte1 AS (SELECT 1 AS col1 FROM t1) SELECT * FROM cte1 WHERE col1 = 1';
+    const result = formatSQL(sql, { whitespace: { insertSemicolons: 'insert' } });
+    expect(result.trimEnd().endsWith('SELECT * FROM cte1 WHERE col1 = 1;')).toBe(true);
+  });
+
+  it('terminates each of several consecutive CTE statements', () => {
+    const sql = [
+      'SET NOCOUNT ON;',
+      ';WITH cte1 AS (SELECT 1 AS col1 FROM t1) SELECT * FROM cte1 WHERE col1 = 1',
+      ';WITH cte2 AS (SELECT 1 AS col1 FROM t1) SELECT * FROM cte2 WHERE col1 = 1',
+    ].join('\n');
+    const result = formatSQL(sql, { whitespace: { insertSemicolons: 'insert' } });
+    expect(result).toContain('SELECT * FROM cte1 WHERE col1 = 1;');
+    expect(result).toContain('SELECT * FROM cte2 WHERE col1 = 1;');
+  });
+
+  it('terminates a CTE whose statement is an INSERT', () => {
+    const sql = 'WITH cte1 AS (SELECT 1 AS col1 FROM t1) INSERT INTO t2 SELECT * FROM cte1';
+    const result = formatSQL(sql, { whitespace: { insertSemicolons: 'insert' } });
+    expect(result.trimEnd().endsWith(';')).toBe(true);
+  });
+
+  it('terminates a CTE nested inside BEGIN/END', () => {
+    const sql = 'BEGIN WITH cte1 AS (SELECT 1 AS col1 FROM t1) SELECT * FROM cte1 END';
+    const result = formatSQL(sql, { whitespace: { insertSemicolons: 'insert' } });
+    expect(result).toContain('SELECT * FROM cte1;');
+  });
+
+  it('keeps an existing CTE semicolon when insertSemicolons is asis', () => {
+    const sql = 'WITH cte1 AS (SELECT 1 AS col1 FROM t1) SELECT * FROM cte1;';
+    const result = formatSQL(sql, { whitespace: { insertSemicolons: 'asis' } });
+    expect(result.trimEnd().endsWith('SELECT * FROM cte1;')).toBe(true);
+  });
+
+  it('omits the semicolon for a CTE without one when insertSemicolons is asis', () => {
+    const sql = 'WITH cte1 AS (SELECT 1 AS col1 FROM t1) SELECT * FROM cte1';
+    const result = formatSQL(sql, { whitespace: { insertSemicolons: 'asis' } });
+    expect(result.trimEnd().endsWith('SELECT * FROM cte1')).toBe(true);
+  });
+
+  it('strips a CTE semicolon when insertSemicolons is remove', () => {
+    const sql = 'WITH cte1 AS (SELECT 1 AS col1 FROM t1) SELECT * FROM cte1;';
+    const result = formatSQL(sql, { whitespace: { insertSemicolons: 'remove' } });
+    expect(result.trimEnd().endsWith('SELECT * FROM cte1')).toBe(true);
+  });
+
+  it('places the semicolon before a trailing comment', () => {
+    const sql = 'WITH cte1 AS (SELECT 1 AS col1 FROM t1) SELECT * FROM cte1; -- done';
+    const result = formatSQL(sql, { whitespace: { insertSemicolons: 'insert' } });
+    expect(result).toContain('SELECT * FROM cte1; -- done');
+  });
+});
+
 // ---- UNION / UNION ALL / EXCEPT / INTERSECT ----
 
 describe('UNION / EXCEPT / INTERSECT', () => {
