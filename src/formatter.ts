@@ -244,7 +244,7 @@ class Formatter {
         if (node.onFilegroup?.length) return node.onFilegroup[node.onFilegroup.length - 1];
         return undefined;
       }
-      case 'dropTable': return this.getLastToken(node.name);
+      case 'dropTable': return this.getLastToken(node.names[node.names.length - 1]);
       case 'transaction': {
         if (node.withTokens?.length) return node.withTokens[node.withTokens.length - 1];
         return node.name ?? node.keywords[node.keywords.length - 1];
@@ -637,8 +637,8 @@ class Formatter {
   private formatDropTable(node: DropTableNode): string {
     const indent = this.indentStr();
     const kw = node.keywords.map(t => this.kw(t.value)).join(' ');
-    const name = this.formatNode(node.name);
-    return `${indent}${kw} ${name}`;
+    const names = node.names.map(n => this.formatNode(n)).join(', ');
+    return `${indent}${kw} ${names}`;
   }
 
   // --- ALTER TABLE ---
