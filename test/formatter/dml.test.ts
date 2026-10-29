@@ -278,6 +278,16 @@ describe('non-standard variable names in expressions', () => {
     expect(result).not.toContain('@XX &');
   });
 
+  it('keeps the USING culture clause inside TRY_PARSE', () => {
+    const result = formatSQL("select sum(try_convert(numeric(28,15), try_parse(nullif(trim(t.col1), '-') as money using 'en-US'))) as x from t");
+    expect(result).toContain("SUM(TRY_CONVERT(NUMERIC(28, 15), TRY_PARSE(NULLIF(TRIM(t.col1), '-') AS MONEY USING 'en-US'))) AS x");
+  });
+
+  it('keeps the USING culture clause inside PARSE', () => {
+    const result = formatSQL("SELECT PARSE(@s AS DATETIME2 USING @culture) FROM t");
+    expect(result).toContain('PARSE(@s AS DATETIME2 USING @culture)');
+  });
+
   it('rejoins slash and hyphen operator-names in expressions', () => {
     const result = formatSQL('SELECT @XX/YY_ABC_DEF, @A1_Param_-_Name_Total FROM t');
     expect(result).toContain('@XX/YY_ABC_DEF');
