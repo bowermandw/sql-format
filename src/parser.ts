@@ -2115,6 +2115,11 @@ class Parser {
           if (hasAsDataType && this.isWord('AS')) {
             args.push({ type: 'rawToken', token: this.advance() } as RawTokenNode); // AS
             args.push(this.parseDataType());
+            // PARSE/TRY_PARSE: optional USING <culture>
+            if ((funcName === 'PARSE' || funcName === 'TRY_PARSE') && this.isWord('USING')) {
+              args.push({ type: 'rawToken', token: this.advance() } as RawTokenNode); // USING
+              args.push(this.parseExpression());
+            }
           }
         }
         let closeComments: Token[] | undefined;

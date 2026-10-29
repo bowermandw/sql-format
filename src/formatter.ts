@@ -2687,7 +2687,9 @@ class Formatter {
 
   private formatFunctionCall(node: FunctionCallNode): string {
     const name = this.formatNode(node.name);
-    const formattedArgs = node.args.map(a => this.formatNode(a));
+    const formattedArgs = node.args.map(a => this.isUsingKeywordArg(a)
+      ? applyCase((a as RawTokenNode).token.value, this.config.casing.reservedKeywords)
+      : this.formatNode(a));
 
     // Build inline string: use space (not comma) before AS keyword args (CAST/TRY_CAST/PARSE/TRY_PARSE etc.)
     const inlineParts: string[] = [];
@@ -2725,12 +2727,14 @@ class Formatter {
       const outerIndent = this.indentStr(this.indent);
       // Re-format args at the inner indent level so nested constructs align
       const expanded = node.args.map((a, i) => {
-        let formatted = this.formatNode(a, this.indent + 1);
+        let formatted = this.isUsingKeywordArg(a)
+          ? applyCase((a as RawTokenNode).token.value, this.config.casing.reservedKeywords)
+          : this.formatNode(a, this.indent + 1);
         // Wrap long expression arguments
         if (a.type === 'expression') {
           formatted = this.wrapExpression(a, this.indent + 1);
         }
-        // No comma before/after AS keyword args
+        // No comma before/after AS/USING keyword args
         const useComma = i < node.args.length - 1 &&
           !this.isAsKeywordArg(node.args[i + 1]) && !this.isAsKeywordArg(a);
         const comma = useComma ? ',' : '';
@@ -2809,10 +2813,17 @@ class Formatter {
     return this.formatNode(node);
   }
 
-  /** Check if a function arg is the AS keyword (used in CAST/TRY_PARSE etc.) */
+  /** Check if a function arg is the AS/USING keyword (used in CAST/TRY_PARSE etc.) */
   private isAsKeywordArg(node: SqlNode): boolean {
+    if (node.type !== 'rawToken') return false;
+    const value = (node as RawTokenNode).token.value.toUpperCase();
+    return value === 'AS' || value === 'USING';
+  }
+
+  /** USING in PARSE/TRY_PARSE isn't a reserved word, so case it as a keyword here */
+  private isUsingKeywordArg(node: SqlNode): boolean {
     return node.type === 'rawToken' &&
-      (node as RawTokenNode).token.value.toUpperCase() === 'AS';
+      (node as RawTokenNode).token.value.toUpperCase() === 'USING';
   }
 
   // --- Data types ---
