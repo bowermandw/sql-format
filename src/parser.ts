@@ -1,13 +1,13 @@
 import { Token, TokenType } from './tokens';
 import { RESERVED_KEYWORDS } from './casing';
 import {
-  SqlNode, BatchNode, SelectNode, CreateProcedureNode, ProcParameter,
+  SqlNode, BatchNode, SelectNode, CreateProcedureNode, CreateViewNode, CreateFunctionNode, CreateTriggerNode, ProcParameter,
   BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, UseNode, ThrowNode, RaiserrorNode,
   CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode,
   RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode,
   InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode,
   ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode,
-  AlterTableNode, PivotNode,
+  AlterTableNode, ConstraintNode, PivotNode,
   DeclareCursorNode, SetCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode,
   TransactionNode,
 } from './ast';
@@ -377,6 +377,21 @@ class Parser {
       return this.parseCreateProcedure(keywords);
     }
 
+    if (this.isWord('VIEW')) {
+      keywords.push(this.advance());
+      return this.parseCreateView(keywords);
+    }
+
+    if (this.isWord('FUNCTION')) {
+      keywords.push(this.advance());
+      return this.parseCreateFunction(keywords);
+    }
+
+    if (this.isWord('TRIGGER')) {
+      keywords.push(this.advance());
+      return this.parseCreateTrigger(keywords);
+    }
+
     if (this.isWord('TABLE')) {
       keywords.push(this.advance());
       // ALTER TABLE gets its own parser (not CREATE TABLE)
@@ -388,6 +403,161 @@ class Parser {
 
     // Fallback: consume rest as raw tokens
     return this.consumeRestAsRaw(keywords);
+  }
+
+  private parseCreateView(keywords: Token[]): SqlNode {
+    const name = this.parseQualifiedName();
+
+    // Optional column list: (col1, col2, ...)
+    let columns: Token[] | undefined;
+    if (this.isType(TokenType.LeftParen)) {
+      columns = [];
+      this.advance(); // (
+      while (!this.isEOF() && !this.isType(TokenType.RightParen)) {
+        if (this.isType(TokenType.Comma)) { this.advanceComma(); continue; }
+        columns.push(this.advance());
+      }
+      if (this.isType(TokenType.RightParen)) this.advance(); // )
+    }
+
+    // Optional view attributes: WITH SCHEMABINDING, ENCRYPTION, VIEW_METADATA
+    let options: Token[] | undefined;
+    if (this.isWord('WITH')) {
+      options = [this.advance()];
+      while (!this.isEOF() && !this.isWord('AS')) {
+        if (!this.isWord() && !this.isType(TokenType.Comma)) break;
+        options.push(this.advance());
+      }
+    }
+
+    if (!this.isWord('AS')) {
+      // Unrecognised shape — keep the original tokens rather than guess
+      return this.consumeRestAsRaw([...keywords]);
+    }
+    const asToken = this.advance();
+
+    const body = this.parseStatement() || { type: 'rawToken', token: asToken } as RawTokenNode;
+
+    // Optional trailing WITH CHECK OPTION
+    let checkOption: Token[] | undefined;
+    if (this.isWord('WITH') && this.isWordAt(1, 'CHECK') && this.isWordAt(2, 'OPTION')) {
+      checkOption = [this.advance(), this.advance(), this.advance()];
+    }
+
+    const node: CreateViewNode = { type: 'createView', keywords, name, asToken, body };
+    if (columns) node.columns = columns;
+    if (options) node.options = options;
+    if (checkOption) node.checkOption = checkOption;
+    return node;
+  }
+
+  /** Header tokens up to the AS that introduces the body (EXECUTE AS ... is kept). */
+  private parseHeaderTokensUntilAs(): Token[] {
+    const tokens: Token[] = [];
+    while (!this.isEOF() && !this.isType(TokenType.BatchSeparator) && !this.isType(TokenType.Semicolon)) {
+      if (this.isWord('AS')) {
+        const prev = tokens[tokens.length - 1];
+        if (!prev || !/^EXEC(UTE)?$/i.test(prev.value)) break;
+      }
+      if (this.isWord('BEGIN') || this.isWord('RETURN')) break;
+      tokens.push(this.advance());
+    }
+    return tokens;
+  }
+
+  private parseCreateFunction(keywords: Token[]): SqlNode {
+    const name = this.parseQualifiedName();
+    const parameters: ProcParameter[] = [];
+
+    if (this.isType(TokenType.LeftParen)) {
+      this.advance(); // (
+      while (!this.isEOF() && !this.isType(TokenType.RightParen)) {
+        if (this.isType(TokenType.Comma)) { this.advanceComma(); continue; }
+        if (this.current().type === TokenType.Word && this.current().value.startsWith('@')) {
+          parameters.push(this.parseProcParameter());
+        } else {
+          break;
+        }
+      }
+      if (this.isType(TokenType.RightParen)) this.advance(); // )
+    }
+
+    if (!this.isWord('RETURNS')) return this.consumeRestAsRaw([...keywords]);
+    const returnsToken = this.advance();
+
+    let returnVariable: Token | undefined;
+    let returnType: SqlNode;
+    let returnTable: CreateFunctionNode['returnTable'];
+    if (this.current().type === TokenType.Word && this.current().value.startsWith('@')) {
+      // Multi-statement TVF: RETURNS @t TABLE (col defs)
+      returnVariable = this.advance();
+      returnType = { type: 'rawToken', token: this.expectWord('TABLE') } as RawTokenNode;
+      returnTable = this.parseTableColumnList();
+    } else if (this.isWord('TABLE')) {
+      // Inline TVF
+      returnType = { type: 'rawToken', token: this.advance() } as RawTokenNode;
+    } else {
+      returnType = this.parseDataType();
+    }
+
+    let options: Token[] | undefined;
+    if (this.isWord('WITH')) {
+      options = this.parseHeaderTokensUntilAs();
+    }
+
+    const asToken = this.isWord('AS') ? this.advance() : undefined;
+
+    let body: SqlNode | null;
+    if (this.isWord('RETURN') && (this.isWordAt(1, 'SELECT') || this.isWordAt(1, 'WITH'))) {
+      // Inline TVF: RETURN SELECT ... / RETURN WITH cte AS (...) SELECT ...
+      const token = this.advance();
+      const expression = this.parseStatement() || undefined;
+      body = { type: 'return', token, expression } as ReturnNode;
+    } else {
+      body = this.parseStatement();
+    }
+    if (!body) body = { type: 'rawToken', token: asToken ?? returnsToken } as RawTokenNode;
+
+    const node: CreateFunctionNode = { type: 'createFunction', keywords, name, parameters, returnsToken, returnType, body };
+    if (returnVariable) node.returnVariable = returnVariable;
+    if (returnTable) node.returnTable = returnTable;
+    if (options) node.options = options;
+    if (asToken) node.asToken = asToken;
+    return node;
+  }
+
+  private parseCreateTrigger(keywords: Token[]): SqlNode {
+    const name = this.parseQualifiedName();
+    if (!this.isWord('ON')) return this.consumeRestAsRaw([...keywords]);
+    const onToken = this.advance();
+
+    let target: SqlNode;
+    if (this.isWord('DATABASE')) {
+      target = { type: 'rawToken', token: this.advance() } as RawTokenNode;
+    } else if (this.isWord('ALL') && this.isWordAt(1, 'SERVER')) {
+      target = { type: 'rawToken', token: this.advance(), extraTokens: [this.advance()] } as RawTokenNode;
+    } else {
+      target = this.parseQualifiedName();
+    }
+
+    // Split the remaining header into one line per clause
+    const clauses: Token[][] = [];
+    for (const t of this.parseHeaderTokensUntilAs()) {
+      const upper = t.value.toUpperCase();
+      const prev = clauses.length ? clauses[clauses.length - 1] : undefined;
+      const prevUpper = prev?.length ? prev[prev.length - 1].value.toUpperCase() : '';
+      const startsClause = t.type === TokenType.Word && (
+        upper === 'AFTER' || upper === 'INSTEAD' || upper === 'NOT' || upper === 'WITH' ||
+        (upper === 'FOR' && prevUpper !== 'NOT'));
+      if (!prev || startsClause) clauses.push([t]);
+      else prev.push(t);
+    }
+
+    if (!this.isWord('AS')) return this.consumeRestAsRaw([...keywords]);
+    const asToken = this.advance();
+    const body = this.parseStatement() || { type: 'rawToken', token: asToken } as RawTokenNode;
+
+    return { type: 'createTrigger', keywords, name, onToken, target, clauses, asToken, body } as CreateTriggerNode;
   }
 
   private parseCreateProcedure(keywords: Token[]): CreateProcedureNode {
@@ -639,11 +809,10 @@ class Parser {
     return { type: 'rawToken', token: parts[0] || this.current() } as RawTokenNode;
   }
 
-  private parseCreateTable(keywords: Token[]): CreateTableNode {
-    const name = this.parseQualifiedName();
+  /** Parenthesised column/constraint list of a table definition (if present). */
+  private parseTableColumnList(): { columns: (ColumnDefNode | ConstraintNode)[]; closeParen?: Token } {
     const columns: (ColumnDefNode | any)[] = [];
     let closeParen: Token | undefined;
-
     if (this.isType(TokenType.LeftParen)) {
       this.advance(); // (
       while (!this.isEOF() && !this.isType(TokenType.RightParen)) {
@@ -658,6 +827,12 @@ class Parser {
       }
       if (this.isType(TokenType.RightParen)) closeParen = this.advance();
     }
+    return { columns, closeParen };
+  }
+
+  private parseCreateTable(keywords: Token[]): CreateTableNode {
+    const name = this.parseQualifiedName();
+    const { columns, closeParen } = this.parseTableColumnList();
 
     // Handle ON filegroup (e.g., ON PRIMARY)
     let onFilegroup: Token[] | undefined;
@@ -698,7 +873,8 @@ class Parser {
         return true;
       // ALTER at start of a new ALTER TABLE statement
       case 'ALTER':
-        return this.isWordAt(1, 'TABLE') || this.isWordAt(1, 'PROCEDURE') || this.isWordAt(1, 'PROC');
+        return this.isWordAt(1, 'TABLE') || this.isWordAt(1, 'PROCEDURE') || this.isWordAt(1, 'PROC') ||
+          this.isWordAt(1, 'VIEW') || this.isWordAt(1, 'FUNCTION') || this.isWordAt(1, 'TRIGGER');
       // DROP as start of a new DROP TABLE statement
       case 'DROP':
         return this.isWordAt(1, 'TABLE') || this.isWordAt(1, 'INDEX') || this.isWordAt(1, 'VIEW') || this.isWordAt(1, 'PROCEDURE') || this.isWordAt(1, 'PROC');

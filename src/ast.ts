@@ -3,6 +3,9 @@ import { Token } from './tokens';
 export type SqlNode =
   | BatchNode
   | CreateProcedureNode
+  | CreateViewNode
+  | CreateFunctionNode
+  | CreateTriggerNode
   | SelectNode
   | InsertNode
   | UpdateNode
@@ -62,6 +65,42 @@ export interface CreateProcedureNode {
   parameters: ProcParameter[];
   asToken: Token;
   body: SqlNode;              // typically BeginEndNode
+}
+
+export interface CreateViewNode {
+  type: 'createView';
+  keywords: Token[];          // CREATE, OR, ALTER, VIEW
+  name: SqlNode;              // schema.viewName
+  columns?: Token[];          // optional (col1, col2, ...) list
+  options?: Token[];          // WITH SCHEMABINDING, ENCRYPTION, VIEW_METADATA (WITH token first)
+  asToken: Token;
+  body: SqlNode;              // SELECT or CTE
+  checkOption?: Token[];      // WITH CHECK OPTION
+}
+
+export interface CreateFunctionNode {
+  type: 'createFunction';
+  keywords: Token[];          // CREATE, OR, ALTER, FUNCTION
+  name: SqlNode;
+  parameters: ProcParameter[];
+  returnsToken: Token;        // RETURNS
+  returnVariable?: Token;     // @t in RETURNS @t TABLE (...)
+  returnType: SqlNode;        // scalar data type, or TABLE
+  returnTable?: { columns: (ColumnDefNode | ConstraintNode)[]; closeParen?: Token };
+  options?: Token[];          // WITH SCHEMABINDING, RETURNS NULL ON NULL INPUT, ...
+  asToken?: Token;            // AS is optional for functions
+  body: SqlNode;              // BeginEndNode, or ReturnNode for inline TVFs
+}
+
+export interface CreateTriggerNode {
+  type: 'createTrigger';
+  keywords: Token[];          // CREATE, OR, ALTER, TRIGGER
+  name: SqlNode;
+  onToken: Token;             // ON
+  target: SqlNode;            // table/view name, or DATABASE / ALL SERVER
+  clauses: Token[][];         // WITH ..., AFTER INSERT, UPDATE, NOT FOR REPLICATION (one line each)
+  asToken: Token;
+  body: SqlNode;
 }
 
 export interface ProcParameter {

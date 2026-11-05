@@ -517,3 +517,155 @@ describe('DROP TABLE with a list of tables', () => {
     expect(result.trim()).toBe('TRUNCATE TABLE [dbo].[t1];');
   });
 });
+
+// ---- CREATE VIEW / FUNCTION / TRIGGER ----
+
+function parseFirst(sql: string): any {
+  return parse(attachComments(tokenize(sql))).batches[0].statements[0];
+}
+
+describe('CREATE VIEW', () => {
+  it('parses into a createView node instead of raw tokens', () => {
+    const stmt = parseFirst('CREATE OR ALTER VIEW [dbo].[v] AS SELECT a FROM t');
+    expect(stmt.type).toBe('createView');
+    expect(stmt.body.type).toBe('select');
+  });
+
+  it('formats the SELECT body like a standalone statement', () => {
+    const result = formatSQL('CREATE OR ALTER VIEW [dbo].[view_name] AS SELECT a.col1, a.col2, b.col3 FROM dbo.TableA a INNER JOIN dbo.TableB b ON a.id = b.id WHERE a.x = 1');
+    expect(result).toBe([
+      'CREATE OR ALTER VIEW [dbo].[view_name]',
+      'AS',
+      'SELECT a.col1,',
+      '    a.col2,',
+      '    b.col3',
+      'FROM',
+      '    dbo.TableA a',
+      '    INNER JOIN dbo.TableB b',
+      '        ON a.id = b.id',
+      'WHERE',
+      '    a.x = 1',
+      '',
+    ].join('\n'));
+  });
+
+  it('keeps column list, view attributes and WITH CHECK OPTION', () => {
+    const result = formatSQL('create view dbo.v (c1, c2) with schemabinding, view_metadata as select a, b from dbo.t with check option');
+    expect(result).toBe([
+      'CREATE VIEW dbo.v (c1, c2)',
+      'WITH SCHEMABINDING, VIEW_METADATA',
+      'AS',
+      'SELECT a, b FROM dbo.t',
+      'WITH CHECK OPTION',
+      '',
+    ].join('\n'));
+  });
+
+  it('places the inserted semicolon after WITH CHECK OPTION', () => {
+    const result = formatSQL('CREATE VIEW dbo.v AS SELECT a FROM dbo.t WITH CHECK OPTION', {
+      whitespace: { insertSemicolons: 'insert' },
+    });
+    expect(result).toContain('WITH CHECK OPTION;');
+    expect(result).not.toContain('dbo.t;');
+  });
+
+  it('supports a CTE body', () => {
+    const stmt = parseFirst('CREATE VIEW dbo.v AS WITH c AS (SELECT id FROM t) SELECT id FROM c');
+    expect(stmt.type).toBe('createView');
+    expect(stmt.body.type).toBe('cte');
+  });
+
+  it('keeps a comment after AS', () => {
+    const result = formatSQL('CREATE VIEW dbo.v AS -- note\nSELECT a FROM t');
+    expect(result).toContain('AS -- note\nSELECT a FROM t');
+  });
+
+  it('terminates a preceding statement at ALTER VIEW', () => {
+    const batch = parse(attachComments(tokenize('PRINT 1\nALTER VIEW dbo.v AS SELECT a FROM t'))).batches[0];
+    expect(batch.statements.map((s: any) => s.type)).toEqual(['print', 'createView']);
+  });
+});
+
+describe('CREATE FUNCTION', () => {
+  it('formats a scalar function', () => {
+    const result = formatSQL('CREATE OR ALTER FUNCTION dbo.f (@a INT, @b VARCHAR(20) = NULL) RETURNS INT WITH SCHEMABINDING AS BEGIN RETURN @a END');
+    expect(result).toBe([
+      'CREATE OR ALTER FUNCTION dbo.f',
+      '(',
+      '    @a INT,',
+      '    @b VARCHAR(20) = NULL',
+      ')',
+      'RETURNS INT',
+      'WITH SCHEMABINDING',
+      'AS',
+      'BEGIN',
+      '    RETURN @a',
+      'END',
+      '',
+    ].join('\n'));
+  });
+
+  it('formats an inline table-valued function with RETURN (SELECT ...)', () => {
+    const stmt = parseFirst('CREATE FUNCTION dbo.f (@id INT) RETURNS TABLE AS RETURN (SELECT a FROM t WHERE id = @id)');
+    expect(stmt.type).toBe('createFunction');
+    expect(stmt.body.type).toBe('return');
+    const result = formatSQL('CREATE FUNCTION dbo.f (@id INT) RETURNS TABLE AS RETURN (SELECT a FROM t WHERE id = @id)');
+    expect(result).toContain('RETURNS TABLE\nAS\nRETURN (SELECT a FROM t WHERE id = @id)');
+  });
+
+  it('formats an inline TVF with an unparenthesised RETURN SELECT and no parameters', () => {
+    const result = formatSQL('create function dbo.f() returns table as return select a from t');
+    expect(result).toBe('CREATE FUNCTION dbo.f()\nRETURNS TABLE\nAS\nRETURN\nSELECT a FROM t\n');
+  });
+
+  it('formats a multi-statement TVF with its return table definition', () => {
+    const result = formatSQL('CREATE FUNCTION dbo.f (@id INT) RETURNS @t TABLE (id INT NOT NULL, name VARCHAR(50)) AS BEGIN RETURN END');
+    expect(result).toContain([
+      'RETURNS @t TABLE',
+      '(',
+      '    id INT NOT NULL,',
+      '    name VARCHAR(50)',
+      ')',
+      'AS',
+      'BEGIN',
+    ].join('\n'));
+  });
+
+  it('accepts a function without AS', () => {
+    const stmt = parseFirst('CREATE FUNCTION dbo.f() RETURNS TABLE RETURN SELECT 1 AS x');
+    expect(stmt.type).toBe('createFunction');
+    expect(stmt.asToken).toBeUndefined();
+  });
+});
+
+describe('CREATE TRIGGER', () => {
+  it('formats a DML trigger with one clause per line', () => {
+    const result = formatSQL('create or alter trigger dbo.trg on dbo.T after insert, update not for replication as begin set nocount on end');
+    expect(result).toBe([
+      'CREATE OR ALTER TRIGGER dbo.trg',
+      'ON dbo.T',
+      'AFTER INSERT, UPDATE',
+      'NOT FOR REPLICATION',
+      'AS',
+      'BEGIN',
+      '    SET NOCOUNT ON',
+      'END',
+      '',
+    ].join('\n'));
+  });
+
+  it('formats INSTEAD OF triggers', () => {
+    const result = formatSQL('CREATE TRIGGER dbo.trg ON dbo.v INSTEAD OF DELETE AS BEGIN PRINT 1 END');
+    expect(result).toContain('ON dbo.v\nINSTEAD OF DELETE\nAS\n');
+  });
+
+  it('formats a DDL trigger with EXECUTE AS (not mistaken for the body AS)', () => {
+    const result = formatSQL("CREATE TRIGGER trg ON DATABASE WITH EXECUTE AS 'dbo' FOR CREATE_TABLE, ALTER_TABLE AS BEGIN PRINT 'x' END");
+    expect(result).toContain("ON DATABASE\nWITH EXECUTE AS 'dbo'\nFOR CREATE_TABLE, ALTER_TABLE\nAS\nBEGIN");
+  });
+
+  it('formats ON ALL SERVER', () => {
+    const result = formatSQL('CREATE TRIGGER trg ON ALL SERVER FOR LOGON AS BEGIN PRINT 1 END');
+    expect(result).toContain('ON ALL SERVER\nFOR LOGON\nAS\n');
+  });
+});
