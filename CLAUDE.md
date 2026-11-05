@@ -6,7 +6,7 @@ T-SQL formatter driven by RedGate-compatible JSON style configs.
 
 ```bash
 npm run build        # tsc → dist/
-npm run test         # vitest run (673 tests)
+npm run test         # vitest run (691 tests)
 npm run test:watch   # vitest watch mode
 ```
 
@@ -98,7 +98,7 @@ Three-stage pipeline: `SQL Text → Tokenizer → Token[] → Parser → AST (Ba
 
 - **Root:** `BatchNode` (contains batches separated by GO)
 - **DML:** `SelectNode`, `InsertNode`, `UpdateNode`, `DeleteNode`
-- **DDL:** `CreateTableNode`, `AlterTableNode`, `DropTableNode`, `CreateProcedureNode`, `ColumnDefNode`, `ConstraintNode`
+- **DDL:** `CreateTableNode`, `AlterTableNode`, `DropTableNode`, `CreateProcedureNode`, `CreateViewNode`, `CreateFunctionNode`, `CreateTriggerNode`, `ColumnDefNode`, `ConstraintNode`
 - **Query parts:** `CteNode`, `JoinNode`, `WhereNode`, `GroupByNode`, `OrderByNode`, `HavingNode`
 - **Control flow:** `BeginEndNode`, `IfElseNode`, `CaseNode`, `DeclareNode`, `SetNode`, `PrintNode`, `ReturnNode`, `TransactionNode` (BEGIN/COMMIT/ROLLBACK/SAVE TRAN)
 - **Expressions:** `ExpressionNode` (binary), `FunctionCallNode`, `InExpressionNode`, `BetweenNode`, `ExistsNode`

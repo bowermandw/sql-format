@@ -1,5 +1,5 @@
 import { Token, TokenType } from './tokens';
-import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, UseNode, ThrowNode, RaiserrorNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode, DeclareCursorNode, SetCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode, TransactionNode } from './ast';
+import { SqlNode, BatchNode, SelectNode, CreateProcedureNode, CreateViewNode, CreateFunctionNode, CreateTriggerNode, BeginEndNode, TryCatchNode, IfElseNode, SetNode, DeclareNode, PrintNode, ReturnNode, UseNode, ThrowNode, RaiserrorNode, CaseNode, ExpressionNode, FunctionCallNode, IdentifierNode, LiteralNode, RawTokenNode, WhereNode, GroupByNode, OrderByNode, HavingNode, JoinNode, InsertNode, UpdateNode, DeleteNode, CteNode, InExpressionNode, BetweenNode, ExistsNode, ParenGroupNode, CreateTableNode, ColumnDefNode, DropTableNode, AlterTableNode, ConstraintNode, PivotNode, DeclareCursorNode, SetCursorNode, OpenCursorNode, CloseCursorNode, FetchCursorNode, DeallocateCursorNode, TransactionNode } from './ast';
 import { FormatConfig } from './config';
 import { caseWord, categorizeWord, applyCase } from './casing';
 
@@ -141,6 +141,7 @@ class Formatter {
       case 'dropTable':
       case 'createTable':
       case 'alterTable':
+      case 'createView':
       case 'declareCursor':
       case 'setCursor':
       case 'openCursor':
@@ -181,6 +182,9 @@ class Formatter {
       case 'ifElse': return node.ifToken;
       case 'cte': return node.withToken;
       case 'createProcedure': return node.keywords[0];
+      case 'createView': return node.keywords[0];
+      case 'createFunction': return node.keywords[0];
+      case 'createTrigger': return node.keywords[0];
       case 'createTable': return node.keywords[0];
       case 'dropTable': return node.keywords[0];
       case 'alterTable': return node.keywords[0];
@@ -240,6 +244,10 @@ class Formatter {
       case 'print': return this.getLastToken(node.expression);
       case 'return': return node.expression ? this.getLastToken(node.expression) : node.token;
       case 'use': return this.getLastToken(node.database);
+      case 'createView': {
+        if (node.checkOption?.length) return node.checkOption[node.checkOption.length - 1];
+        return this.getLastToken(node.body);
+      }
       case 'createTable': {
         if (node.onFilegroup?.length) return node.onFilegroup[node.onFilegroup.length - 1];
         return undefined;
@@ -448,6 +456,9 @@ class Formatter {
     switch (node.type) {
       case 'batch': return this.formatBatch(node);
       case 'createProcedure': return this.formatCreateProcedure(node);
+      case 'createView': return this.formatCreateView(node);
+      case 'createFunction': return this.formatCreateFunction(node);
+      case 'createTrigger': return this.formatCreateTrigger(node);
       case 'createTable': return this.formatCreateTable(node);
       case 'dropTable': return this.formatDropTable(node);
       case 'alterTable': return this.formatAlterTable(node);
@@ -534,6 +545,107 @@ class Formatter {
     return parts.join('\n');
   }
 
+  /** Space-joined token list (keywords cased, commas attached). */
+  private formatTokenList(tokens: Token[]): string {
+    let s = '';
+    tokens.forEach((t, i) => {
+      const isKeyword = t.type === TokenType.Word && !t.value.startsWith('@');
+      const value = isKeyword ? this.kwToken(t) : this.tokenValue(t);
+      if (t.type === TokenType.Comma) s += ',';
+      else s += (i === 0 ? '' : ' ') + value;
+      // Only the last token's trailing comment can sit on this line safely
+      if (i === tokens.length - 1) s += this.tokenComments(t).suffix;
+    });
+    return s;
+  }
+
+  /** Header keywords (CREATE OR ALTER VIEW ...), cased. */
+  private headerKeywords(tokens: Token[]): string {
+    return tokens.map(t => this.kwToken(t)).join(' ');
+  }
+
+  // --- CREATE VIEW ---
+
+  private formatCreateView(node: CreateViewNode): string {
+    const kwStr = this.headerKeywords(node.keywords);
+    let header = `${kwStr} ${this.formatNode(node.name)}`;
+    if (node.columns?.length) {
+      header += ` (${node.columns.map(t => this.formatIdentifierPartWithComments(t)).join(', ')})`;
+    }
+    const parts = [header];
+    if (node.options?.length) parts.push(this.formatTokenList(node.options));
+    parts.push(this.kwTokenWithComments(node.asToken));
+    parts.push(this.formatNode(node.body));
+    if (node.checkOption?.length) parts.push(this.formatTokenList(node.checkOption));
+    return parts.join('\n');
+  }
+
+  // --- CREATE FUNCTION ---
+
+  private formatCreateFunction(node: CreateFunctionNode): string {
+    const kwStr = this.headerKeywords(node.keywords);
+    const nameStr = this.formatNode(node.name);
+    const parts: string[] = [];
+
+    if (node.parameters.length === 0) {
+      parts.push(`${kwStr} ${nameStr}()`);
+    } else {
+      let nameWidth = 0;
+      if (this.config.ddl.alignDataTypesAndConstraints && node.parameters.length > 1) {
+        nameWidth = Math.max(...node.parameters.map(p => p.name.value.length));
+      }
+      const paramLines = node.parameters.map(p => this.formatProcParam(p, nameWidth));
+      const placeFirst = this.config.ddl.placeFirstProcedureParameterOnNewLine;
+      if (placeFirst === 'always' || (placeFirst === 'ifSeveralItems' && node.parameters.length > 1)) {
+        parts.push(`${kwStr} ${nameStr}`);
+        parts.push('(');
+        const indent = this.indentStr(1);
+        parts.push(paramLines.map(p => indent + p).join(',\n'));
+        parts.push(')');
+      } else {
+        parts.push(`${kwStr} ${nameStr} (${paramLines.join(', ')})`);
+      }
+    }
+
+    // RETURNS clause
+    const returns = this.kw('RETURNS');
+    if (node.returnVariable) {
+      parts.push(`${returns} ${node.returnVariable.value} ${this.kw('TABLE')}`);
+      parts.push('(');
+      parts.push(...this.formatTableColumnLines(node.returnTable?.columns ?? [], node.returnTable?.closeParen));
+      parts.push(')');
+    } else if (node.returnType.type === 'rawToken') {
+      parts.push(`${returns} ${this.kw(node.returnType.token.value.toUpperCase())}`);
+    } else {
+      parts.push(`${returns} ${this.formatDataType(node.returnType)}`);
+    }
+
+    if (node.options?.length) parts.push(this.formatTokenList(node.options));
+    if (node.asToken) parts.push(this.kwTokenWithComments(node.asToken));
+
+    if (node.body.type === 'return' && node.body.expression &&
+        (node.body.expression.type === 'select' || node.body.expression.type === 'cte')) {
+      // Inline TVF written as RETURN SELECT ... — put the query under RETURN
+      parts.push(this.kwTokenWithComments(node.body.token));
+      parts.push(this.formatNode(node.body.expression));
+    } else {
+      parts.push(this.formatNode(node.body));
+    }
+    return parts.join('\n');
+  }
+
+  // --- CREATE TRIGGER ---
+
+  private formatCreateTrigger(node: CreateTriggerNode): string {
+    const kwStr = this.headerKeywords(node.keywords);
+    const parts = [`${kwStr} ${this.formatNode(node.name)}`];
+    parts.push(`${this.kw('ON')} ${this.formatNode(node.target)}`);
+    for (const clause of node.clauses) parts.push(this.formatTokenList(clause));
+    parts.push(this.kwTokenWithComments(node.asToken));
+    parts.push(this.formatNode(node.body));
+    return parts.join('\n');
+  }
+
   private formatProcParam(param: { name: Token; dataType: SqlNode; default?: SqlNode; output?: Token }, nameWidth: number = 0): string {
     const name = nameWidth > 0 ? this.padToWidth(param.name.value, nameWidth) : param.name.value;
     let s = `${name} ${this.formatDataType(param.dataType)}`;
@@ -565,11 +677,22 @@ class Formatter {
 
     const parts: string[] = [`${baseIndent}${kw} ${name}`];
     parts.push(baseIndent + '(');
+    parts.push(...this.formatTableColumnLines(node.columns, node.closeParen));
+    parts.push(baseIndent + ')');
+    if (node.onFilegroup && node.onFilegroup.length > 0) {
+      parts.push(baseIndent + node.onFilegroup.map(t => this.kw(t.value)).join(' '));
+    }
+    return parts.join('\n');
+  }
+
+  /** Column/constraint lines of a table definition, indented one level (no parens). */
+  private formatTableColumnLines(columns: (ColumnDefNode | ConstraintNode)[], closeParen?: Token): string[] {
+    const parts: string[] = [];
     const colIndent = this.indentStr(this.indent + 1);
     let nameWidth = 0;
-    if (this.config.ddl.alignDataTypesAndConstraints && node.columns.length > 1) {
+    if (this.config.ddl.alignDataTypesAndConstraints && columns.length > 1) {
       const saved = this.saveEmittedComments();
-      nameWidth = Math.max(...node.columns.map(c => {
+      nameWidth = Math.max(...columns.map(c => {
         if (c.type === 'columnDef') {
           return this.formatIdentifierPart((c as ColumnDefNode).name).length;
         }
@@ -577,7 +700,7 @@ class Formatter {
       }));
       this.restoreEmittedComments(saved);
     }
-    const colStrs = node.columns.map(c => {
+    const colStrs = columns.map(c => {
       const token = c.type === 'columnDef' ? (c as ColumnDefNode).name : (c as ConstraintNode).tokens[0];
       const comments = this.formatTokenLeadingComments(token, this.indent + 1);
       const commaComment = this.getTokenCommaComment(token);
@@ -597,17 +720,13 @@ class Formatter {
     }
     parts.push(colLines.join('\n'));
     // Emit any comments on the close paren (e.g., commented-out columns at end)
-    if (node.closeParen) {
-      const closeComments = this.formatTokenLeadingComments(node.closeParen, this.indent + 1);
+    if (closeParen) {
+      const closeComments = this.formatTokenLeadingComments(closeParen, this.indent + 1);
       if (closeComments) {
         parts.push(closeComments.trimEnd());
       }
     }
-    parts.push(baseIndent + ')');
-    if (node.onFilegroup && node.onFilegroup.length > 0) {
-      parts.push(baseIndent + node.onFilegroup.map(t => this.kw(t.value)).join(' '));
-    }
-    return parts.join('\n');
+    return parts;
   }
 
   private collapseCreateTable(node: CreateTableNode, kw: string, name: string): string {
