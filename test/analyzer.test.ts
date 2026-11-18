@@ -564,4 +564,50 @@ INSERT INTO #t SELECT col1, col2 FROM src`;
       expect(w[1].message).toContain('1 column(s) each');
     });
   });
+
+  describe('analyzer walks view, function, trigger, TRY/CATCH and cursor bodies', () => {
+    const bad = 'SELECT a, b FROM t UNION ALL SELECT a FROM s';
+    const u = (sql: string) => getWarnings(sql, { checkUnionColumns: true });
+
+    it('CREATE OR ALTER VIEW', () => {
+      const w = u(`CREATE OR ALTER VIEW dbo.v AS ${bad} UNION ALL SELECT a, b FROM r`);
+      expect(w).toHaveLength(1);
+      expect(w[0].message).toContain('COLUMN COUNT MISMATCH (2, 1, 2)');
+    });
+
+    it('view with a CTE body', () => {
+      const w = u(`CREATE VIEW dbo.v AS WITH c AS (SELECT a FROM t) ${bad}`);
+      expect(w).toHaveLength(1);
+    });
+
+    it('inline table-valued function', () => {
+      const w = u(`CREATE FUNCTION dbo.f() RETURNS TABLE AS RETURN (${bad})`);
+      expect(w).toHaveLength(1);
+    });
+
+    it('multi-statement function', () => {
+      const w = u(`CREATE FUNCTION dbo.f() RETURNS @r TABLE (a int) AS BEGIN INSERT INTO @r SELECT a FROM t UNION SELECT a, b FROM s; RETURN; END`);
+      expect(w).toHaveLength(1);
+    });
+
+    it('trigger', () => {
+      const w = u(`CREATE TRIGGER dbo.tr ON dbo.t AFTER INSERT AS BEGIN ${bad}; END`);
+      expect(w).toHaveLength(1);
+    });
+
+    it('BEGIN TRY / BEGIN CATCH', () => {
+      const w = u(`BEGIN TRY ${bad}; END TRY BEGIN CATCH ${bad}; END CATCH`);
+      expect(w).toHaveLength(2);
+    });
+
+    it('cursor declaration', () => {
+      const w = u(`DECLARE cur CURSOR LOCAL FOR ${bad}`);
+      expect(w).toHaveLength(1);
+    });
+
+    it('other checks also see view bodies', () => {
+      const w = getWarnings('CREATE VIEW dbo.v AS SELECT a FROM t', { schema: true });
+      expect(w.map(x => x.message)).toContain('Warning: Schema is missing from t (line 1)');
+    });
+  });
 });
