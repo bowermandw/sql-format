@@ -2,7 +2,7 @@
   "name": "sql-format-vscode",
   "displayName": "T-SQL Format",
   "description": "Format T-SQL using sql-format with RedGate-compatible JSON style configs",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "publisher": "meraki-digital",
   "engines": {
     "vscode": "^1.80.0"
@@ -140,6 +140,11 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Show the `INSERT ... SELECT` column mapping and flag count/name mismatches (CLI `--check-insert-columns`). Shown in the Problems panel."
+        },
+        "sqlFormat.checkUnionColumns": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Line up the select lists of `UNION` / `UNION ALL` / `EXCEPT` / `INTERSECT` queries column by column and flag count mismatches, pointing at the column where a query drifts (CLI `--check-union-columns`). Shown in the Problems panel."
         }
       }
     }

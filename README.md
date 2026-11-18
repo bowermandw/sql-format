@@ -37,6 +37,7 @@ sql-format --style style.json -i input.sql
 | `--insert-semicolons` | `-c` | | Insert semicolons after each statement |
 | `--line-ending` | `-l` | `lf\|crlf` | Line ending style (default: `lf`) |
 | `--in-place` | `-i` | | Overwrite the input file with formatted output |
+| `--check-union-columns` | `-u` | | Line up `UNION`/`EXCEPT`/`INTERSECT` columns by position and flag count mismatches (to stderr) |
 | `--tokens` | `-t` | | Print token list (debug mode) |
 | `--ast` | `-a` | | Print AST as JSON (debug mode) |
 | `--help` | `-h` | | Show help message |

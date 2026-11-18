@@ -16,6 +16,7 @@ const ANALYZE_SETTING_KEYS = [
   'warnMissingNocount',
   'warnMissingNullability',
   'checkInsertColumns',
+  'checkUnionColumns',
 ] as const;
 
 const DEBOUNCE_MS = 300;
@@ -271,6 +272,7 @@ function refreshDiagnostics(document: vscode.TextDocument): void {
     warnMissingNocount: settings.get<boolean>('warnMissingNocount') === true,
     warnMissingNullability: settings.get<boolean>('warnMissingNullability') === true,
     checkInsertColumns: settings.get<boolean>('checkInsertColumns') === true,
+    checkUnionColumns: settings.get<boolean>('checkUnionColumns') === true,
   };
 
   const anyEnabled = ANALYZE_SETTING_KEYS.some(key => options[key]);
