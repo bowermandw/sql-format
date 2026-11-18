@@ -21,6 +21,12 @@ import {
   LiteralNode,
   ExpressionNode,
   FunctionCallNode,
+  CreateViewNode,
+  CreateFunctionNode,
+  CreateTriggerNode,
+  TryCatchNode,
+  ReturnNode,
+  DeclareCursorNode,
 } from './ast';
 import { Token } from './tokens';
 
@@ -242,6 +248,37 @@ function walkStatement(
       walkStatement(proc.body, options, warnings, cteNames, new Map());
       break;
     }
+
+    // Views, functions and triggers: like procedures, each body is its own scope.
+    case 'createView':
+      walkStatement((node as CreateViewNode).body, options, warnings, cteNames, new Map());
+      break;
+
+    case 'createFunction':
+      walkStatement((node as CreateFunctionNode).body, options, warnings, cteNames, new Map());
+      break;
+
+    case 'createTrigger':
+      walkStatement((node as CreateTriggerNode).body, options, warnings, cteNames, new Map());
+      break;
+
+    case 'tryCatch': {
+      const tc = node as TryCatchNode;
+      walkStatement(tc.tryBlock, options, warnings, cteNames, registry);
+      walkStatement(tc.catchBlock, options, warnings, cteNames, registry);
+      break;
+    }
+
+    // RETURN (SELECT ...) — the body of an inline table-valued function
+    case 'return': {
+      const ret = node as ReturnNode;
+      if (ret.expression) walkExpression(ret.expression, options, warnings, cteNames, registry);
+      break;
+    }
+
+    case 'declareCursor':
+      walkStatement((node as DeclareCursorNode).select, options, warnings, cteNames, registry);
+      break;
   }
 }
 
