@@ -63,6 +63,7 @@ enabled.
 | `sqlFormat.warnMissingNocount` | a stored procedure body lacks `SET NOCOUNT ON` | `--warn-missing-nocount` |
 | `sqlFormat.warnMissingNullability` | a temp-table/table-variable column omits `NULL`/`NOT NULL` | `--warn-missing-nullability` |
 | `sqlFormat.checkInsertColumns` | reports `INSERT…SELECT` column mapping and flags mismatches | `--check-insert-columns` |
+| `sqlFormat.checkUnionColumns` | lines up `UNION`/`EXCEPT`/`INTERSECT` columns and flags count mismatches | `--check-union-columns` |
 
 ## Develop
 

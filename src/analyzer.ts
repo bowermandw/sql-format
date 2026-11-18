@@ -18,6 +18,9 @@ import {
   ColumnDefNode,
   ConstraintNode,
   SetNode,
+  LiteralNode,
+  ExpressionNode,
+  FunctionCallNode,
 } from './ast';
 import { Token } from './tokens';
 
@@ -33,6 +36,8 @@ export interface AnalyzeOptions {
   warnMissingNocount: boolean;
   warnMissingNullability: boolean;
   checkInsertColumns: boolean;
+  /** Line up the select lists of UNION / EXCEPT / INTERSECT branches and flag count mismatches. */
+  checkUnionColumns?: boolean;
 }
 
 type TempColumnRegistry = Map<string, string[]>;
@@ -118,6 +123,9 @@ function walkStatement(
 
     case 'select': {
       const sel = node as SelectNode;
+      if (options.checkUnionColumns && sel.union && !unionTails.has(sel)) {
+        checkUnionColumnAlignment(sel, warnings);
+      }
       if (sel.from) {
         checkTableReference(sel.from.source, options, warnings, cteNames, true);
         walkSubquerySource(sel.from.source, options, warnings, cteNames, registry);
@@ -452,6 +460,189 @@ function checkInsertColumnMapping(
   }
 
   warnings.push({ message: lines.join('\n'), line });
+}
+
+/** SELECTs reached as the 2nd+ branch of a UNION chain; the chain is reported once, from its head. */
+const unionTails = new WeakSet<SelectNode>();
+
+const MAX_LABEL = 30;
+
+/** Render a select item compactly (e.g. `CAST(a.Amt AS int)`, `NULL`, `a.Qty * 2`). */
+function exprText(node: SqlNode | undefined): string {
+  if (!node) return '';
+  switch (node.type) {
+    case 'literal':
+    case 'rawToken':
+      return (node as LiteralNode).token.value;
+    case 'identifier': {
+      const id = node as IdentifierNode;
+      const inner = (id as { _expression?: SqlNode })._expression;
+      if (id.parts.length === 0 && inner) return exprText(inner);
+      return id.parts.map(p => p.value).join('.');
+    }
+    case 'expression': {
+      const e = node as ExpressionNode;
+      return `${exprText(e.left)} ${e.operator.value} ${exprText(e.right)}`;
+    }
+    case 'functionCall': {
+      const fn = node as FunctionCallNode;
+      return `${exprText(fn.name)}(${fn.args.map(exprText).join(', ')})`;
+    }
+    case 'case':
+      return 'CASE…END';
+    case 'parenGroup':
+      return '(…)';
+    default:
+      return '<expr>';
+  }
+}
+
+function truncate(s: string): string {
+  const flat = s.replace(/\s+/g, ' ');
+  return flat.length > MAX_LABEL ? flat.slice(0, MAX_LABEL - 1) + '…' : flat;
+}
+
+/**
+ * The output column name of a select item, if it has one: an alias (`expr AS x`,
+ * `x = expr`) or a bare column reference. Undefined for unnamed expressions.
+ */
+function getUnionItemName(item: SqlNode): string | undefined {
+  if (item.type === 'expression') {
+    const e = item as ExpressionNode;
+    if (e.operator.value === '=' && e.left.type === 'identifier') {
+      const left = e.left as IdentifierNode;
+      if (left.parts.length === 1 && !left.parts[0].value.startsWith('@')) {
+        return normalizeColumnName(left.parts[0]);
+      }
+    }
+    return undefined;
+  }
+  if (item.type === 'identifier') {
+    const id = item as IdentifierNode;
+    if (id.parts.length === 0 && !id.alias) return undefined;
+  }
+  return getSourceItemName(item);
+}
+
+function isStarItem(item: SqlNode): boolean {
+  if (item.type === 'identifier') {
+    const parts = (item as IdentifierNode).parts;
+    return parts.length > 0 && parts[parts.length - 1].value === '*';
+  }
+  return (item.type === 'rawToken' || item.type === 'literal') && (item as RawTokenNode).token.value === '*';
+}
+
+interface UnionBranch {
+  select: SelectNode;
+  operator: string;          // operator joining this branch to the previous one ('' for the first)
+  names: (string | undefined)[];
+  labels: string[];
+}
+
+function checkUnionColumnAlignment(head: SelectNode, warnings: Warning[]): void {
+  const branches: UnionBranch[] = [];
+  let operator = '';
+  for (let sel: SelectNode | undefined = head; sel; ) {
+    branches.push({
+      select: sel,
+      operator,
+      names: sel.columns.map(getUnionItemName),
+      labels: sel.columns.map(c => truncate(getUnionItemName(c) ?? exprText(c))),
+    });
+    if (!sel.union) break;
+    operator = sel.union.token.value.toUpperCase() + (sel.union.all ? ' ALL' : '');
+    unionTails.add(sel.union.select);
+    sel = sel.union.select;
+  }
+
+  const line = head.selectToken.line;
+  const counts = branches.map(b => b.select.columns.length);
+  const hasStar = branches.some(b => b.select.columns.some(isStarItem));
+  const countMismatch = !hasStar && counts.some(c => c !== counts[0]);
+  const ops = [...new Set(branches.slice(1).map(b => b.operator))].join('/');
+
+  const out: string[] = [];
+  let header = `${ops} column check${line ? ` (line ${line})` : ''}: ${branches.length} SELECTs`;
+  if (hasStar) header += ` — contains *, column count cannot be verified`;
+  else if (countMismatch) header += ` — COLUMN COUNT MISMATCH (${counts.join(', ')})`;
+  else header += ` — ${counts[0]} column(s) each`;
+  out.push(header);
+
+  // Position-by-position grid: one row per column position, one column per branch.
+  const headings = branches.map((b, i) => {
+    const l = b.select.selectToken.line;
+    return `SELECT ${i + 1}${l ? ` (line ${l})` : ''}`;
+  });
+  const rows = Math.max(...counts);
+  const cell = (b: UnionBranch, r: number) => (r < b.labels.length ? b.labels[r] : '(missing)');
+  const widths = branches.map((b, i) => {
+    let w = headings[i].length;
+    for (let r = 0; r < rows; r++) w = Math.max(w, cell(b, r).length);
+    return w;
+  });
+  const numW = String(rows).length;
+  out.push(`  ${'#'.padStart(numW)}  ${headings.map((h, i) => h.padEnd(widths[i])).join('  ')}`.trimEnd());
+  for (let r = 0; r < rows; r++) {
+    const flags: string[] = [];
+    if (branches.some(b => r >= b.labels.length)) flags.push('[MISSING]');
+    const named = branches.map(b => b.names[r]).filter((n): n is string => n !== undefined);
+    if (new Set(named.map(n => n.toLowerCase())).size > 1) flags.push('[NAMES DIFFER]');
+    const cells = branches.map((b, i) => cell(b, r).padEnd(widths[i])).join('  ');
+    out.push(`  ${String(r + 1).padStart(numW)}  ${cells}${flags.length ? '  ' + flags.join(' ') : ''}`.trimEnd());
+  }
+
+  if (countMismatch) {
+    for (let i = 1; i < branches.length; i++) {
+      const hint = describeDrift(branches[0], branches[i], i + 1);
+      if (hint) out.push(`  ${hint}`);
+    }
+    out.push(
+      `  Warning: All queries combined using ${ops} must have an equal number of expressions in their target lists.`
+    );
+  }
+
+  warnings.push({ message: out.join('\n'), line });
+}
+
+/**
+ * Explain where branch `b` drifts from the first branch, when their counts differ.
+ * Uses column names: the first position where both are named but disagree, and
+ * whether the rest lines up after a shift (a dropped or extra column).
+ */
+function describeDrift(first: UnionBranch, b: UnionBranch, n: number): string | undefined {
+  const a = first.names.map(x => x?.toLowerCase());
+  const c = b.names.map(x => x?.toLowerCase());
+  const diff = c.length - a.length;
+  if (diff === 0) return undefined;
+  const count = `SELECT ${n} has ${c.length} column(s) vs ${a.length} in SELECT 1`;
+
+  const shiftMatches = (k: number, shift: number): boolean => {
+    // Do the named columns after position k line up once branch b is shifted by `shift`?
+    let compared = 0;
+    for (let i = k; i < a.length; i++) {
+      const j = i + shift;
+      if (j < 0 || j >= c.length) continue;
+      if (a[i] === undefined || c[j] === undefined) continue;
+      if (a[i] !== c[j]) return false;
+      compared++;
+    }
+    return compared > 0;
+  };
+
+  const limit = Math.min(a.length, c.length);
+  for (let k = 0; k < limit; k++) {
+    if (a[k] === undefined || c[k] === undefined || a[k] === c[k]) continue;
+    if (diff < 0 && shiftMatches(k - diff, diff)) {
+      const missing = first.labels.slice(k, k - diff).join(', ');
+      return `${count}; it looks to be missing ${missing} at column ${k + 1}.`;
+    }
+    if (diff > 0 && shiftMatches(k, diff)) {
+      const extra = b.labels.slice(k, k + diff).join(', ');
+      return `${count}; it looks to have extra ${extra} at column ${k + 1}.`;
+    }
+    return `${count}; names first diverge at column ${k + 1} (${first.labels[k]} vs ${b.labels[k]}).`;
+  }
+  return `${count}.`;
 }
 
 function checkExecProcSchema(raw: RawTokenNode, warnings: Warning[]): void {

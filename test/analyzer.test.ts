@@ -3,7 +3,7 @@ import { tokenize, attachComments } from '../src/tokenizer';
 import { parse } from '../src/parser';
 import { analyze, Warning } from '../src/analyzer';
 
-function getWarnings(sql: string, opts: { schema?: boolean; alias?: boolean; nocount?: boolean; nullability?: boolean; checkInsertColumns?: boolean } = {}): Warning[] {
+function getWarnings(sql: string, opts: { schema?: boolean; alias?: boolean; nocount?: boolean; nullability?: boolean; checkInsertColumns?: boolean; checkUnionColumns?: boolean } = {}): Warning[] {
   const tokens = attachComments(tokenize(sql));
   const ast = parse(tokens);
   return analyze(ast, {
@@ -12,6 +12,7 @@ function getWarnings(sql: string, opts: { schema?: boolean; alias?: boolean; noc
     warnMissingNocount: opts.nocount ?? false,
     warnMissingNullability: opts.nullability ?? false,
     checkInsertColumns: opts.checkInsertColumns ?? false,
+    checkUnionColumns: opts.checkUnionColumns ?? false,
   });
 }
 
@@ -490,6 +491,77 @@ INSERT INTO #t SELECT col1, col2 FROM src`;
       expect(m).toContain('col2 -> col2');
       expect(m).not.toContain('[MISMATCH]');
       expect(m).not.toContain('PRIMARY');
+    });
+  });
+
+  describe('union column check', () => {
+    const u = (sql: string) => getWarnings(sql, { checkUnionColumns: true });
+
+    it('is off by default', () => {
+      expect(getWarnings('SELECT a FROM t UNION SELECT a, b FROM s')).toHaveLength(0);
+    });
+
+    it('reports matching counts without a mismatch warning', () => {
+      const w = u('SELECT a, b FROM t UNION ALL SELECT x, y FROM s');
+      expect(w).toHaveLength(1);
+      expect(w[0].message).toContain('UNION ALL column check (line 1): 2 SELECTs — 2 column(s) each');
+      expect(w[0].message).not.toContain('MISMATCH');
+      expect(w[0].message).not.toContain('[MISSING]');
+    });
+
+    it('flags a count mismatch and marks missing positions', () => {
+      const w = u('SELECT a, b, c FROM t\nUNION\nSELECT a, b FROM s');
+      expect(w).toHaveLength(1);
+      const m = w[0].message;
+      expect(m).toContain('COLUMN COUNT MISMATCH (3, 2)');
+      expect(m).toMatch(/3 {2}c +\(missing\) +\[MISSING\]/);
+      expect(m).toContain('must have an equal number of expressions in their target lists');
+      expect(w[0].line).toBe(1);
+    });
+
+    it('pinpoints a dropped column in the middle of a long list', () => {
+      const cols = Array.from({ length: 30 }, (_, i) => `c${i + 1}`);
+      const short = cols.filter(c => c !== 'c17');
+      const w = u(`SELECT ${cols.join(', ')} FROM t UNION ALL SELECT ${short.join(', ')} FROM s`);
+      expect(w[0].message).toContain('SELECT 2 has 29 column(s) vs 30 in SELECT 1; it looks to be missing c17 at column 17.');
+    });
+
+    it('pinpoints an extra column', () => {
+      const w = u('SELECT a, b, c FROM t UNION SELECT a, zz, b, c FROM s');
+      expect(w[0].message).toContain('it looks to have extra zz at column 2.');
+    });
+
+    it('labels aliases, alias-equals and unnamed expressions', () => {
+      const w = u("SELECT x.Name AS Cust, Region = x.Reg, CAST(x.Amt AS int) AS Amt, NULL FROM t x UNION ALL SELECT y.Name, y.Reg, 0, '' FROM s y");
+      const m = w[0].message;
+      expect(m).toMatch(/1 {2}Cust +Name +\[NAMES DIFFER\]/);
+      expect(m).toMatch(/2 {2}Region +Reg/);
+      expect(m).toMatch(/3 {2}Amt +0/);
+      expect(m).toMatch(/4 {2}NULL +''/);
+    });
+
+    it('reports a three-way chain once, from the head', () => {
+      const w = u('SELECT a FROM t UNION SELECT a FROM s EXCEPT SELECT a, b FROM r');
+      expect(w).toHaveLength(1);
+      expect(w[0].message).toContain('UNION/EXCEPT column check');
+      expect(w[0].message).toContain('3 SELECTs — COLUMN COUNT MISMATCH (1, 1, 2)');
+    });
+
+    it('does not claim a mismatch when * is used', () => {
+      const w = u('SELECT * FROM t UNION SELECT a, b FROM s');
+      expect(w[0].message).toContain('contains *, column count cannot be verified');
+      expect(w[0].message).not.toContain('must have an equal number');
+    });
+
+    it('checks unions inside INSERT ... SELECT, CTEs and procedures', () => {
+      const sql = `CREATE PROCEDURE dbo.p AS BEGIN
+        WITH c AS (SELECT a FROM t UNION SELECT a, b FROM s)
+        INSERT INTO dbo.x (a) SELECT a FROM c UNION ALL SELECT a FROM d;
+      END`;
+      const w = u(sql);
+      expect(w).toHaveLength(2);
+      expect(w[0].message).toContain('COLUMN COUNT MISMATCH (1, 2)');
+      expect(w[1].message).toContain('1 column(s) each');
     });
   });
 });
